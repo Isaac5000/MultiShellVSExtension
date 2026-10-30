@@ -1,0 +1,6 @@
+{
+  "multiShell.container": "MultiShell MCP Server",
+  "multiShell.sessions": "Terminales",
+  "multiShell.toggle": "MultiShell MCP: Iniciar o detener servidor",
+  "multiShell.info": "MultiShell MCP: Mostrar información del servidor"
+}

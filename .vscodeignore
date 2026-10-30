@@ -1,0 +1,24 @@
+.git/**
+.vscode/**
+.vscode-test/**
+src/**
+test/**
+scripts/**
+out/test/**
+**/*.map
+**/*.ts
+*.vsix
+*-portable.zip
+*.log
+tsconfig.json
+eslint.config.mjs
+.gitignore
+node_modules/.cache/**
+
+# The runtime is bundled into dist/extension.js. Development/runtime dependencies
+# and individual TypeScript outputs are not needed in the VSIX.
+node_modules/**
+out/**
+
+# Documentation under docs/ is intentionally bundled with the README so its
+# relative links remain valid in both GitHub and the packaged extension.

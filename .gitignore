@@ -1,0 +1,15 @@
+out/
+dist/
+node_modules/
+.vscode/
+.vscode-test/
+*.vsix
+*.log
+backups/
+scripts/*-once.cjs
+.serena/
+plans/
+CLAUDE.md
+*-portable.zip
+__pycache__/
+*.py[cod]
