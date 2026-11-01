@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
-import { MultiWindowController } from './multi-window';
+import { MultiWindowController, UserShellRequest } from './multi-window';
 
-type Lang = 'auto' | 'es' | 'en';
 interface Snapshot {
     running: boolean;
     role?: 'hub' | 'worker';
@@ -11,11 +10,13 @@ interface Snapshot {
     primary?: string;
     port?: number;
     activePort?: number;
-    shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; busy: boolean; queued: number }>;
+    windowAutoExit?: boolean;
+    requests?: UserShellRequest[];
+    shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; busy: boolean; queued: number; auto_exit_interactive?:boolean; auto_exit_override?:boolean }>;
     windows?: Array<{ window_id: string; workspace: string; online: boolean }>;
 }
 interface UIMessage {
-    type: 'refresh' | 'toggle' | 'create' | 'show' | 'close' | 'confirm_restore' | 'copy' | 'language' | 'alias' | 'port';
+    type: 'refresh' | 'toggle' | 'create' | 'show' | 'close' | 'confirm_restore' | 'copy' | 'alias' | 'port' | 'window_interactive' | 'shell_interactive' | 'request_decision';
     id?: unknown;
     cwd?: unknown;
     share?: unknown;
@@ -31,21 +32,21 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
     private view?: vscode.WebviewView;
     private timer?: ReturnType<typeof setInterval>;
     private busy = false;
-    private language: Lang;
+    private lastSnapshot?: string;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly getController: () => MultiWindowController | undefined
+        private readonly getController: () => MultiWindowController | undefined,
+        private readonly persistUserShell?: (shell:NonNullable<Snapshot['shells']>[number])=>Promise<void>,
+        private readonly deleteUserShell?: (id:string)=>Promise<void>
     ) {
-        this.language = context.workspaceState.get<Lang>('multiShellPanelLanguage', 'auto');
     }
     private locale(): 'es' | 'en' {
-        return this.language === 'auto'
-            ? (vscode.env.language.toLowerCase().startsWith('es') ? 'es' : 'en')
-            : this.language;
+        return vscode.env.language.toLowerCase().startsWith('es') ? 'es' : 'en';
     }
     resolveWebviewView(view: vscode.WebviewView): void {
         this.view = view;
+        this.lastSnapshot = undefined;
         const assets = vscode.Uri.joinPath(this.context.extensionUri, 'media');
         const js = view.webview.asWebviewUri(vscode.Uri.joinPath(assets, 'panel.js'));
         const css = view.webview.asWebviewUri(vscode.Uri.joinPath(assets, 'panel.css'));
@@ -85,6 +86,13 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                     '</div>',
                     '<p class="port-help" data-i18n="portHelp"></p>',
                 '</form>',
+                '<div class="interactive-settings">',
+                    '<label class="checkline" for="windowInteractive">',
+                        '<input type="checkbox" id="windowInteractive">',
+                        '<span data-i18n="windowInteractive"></span>',
+                    '</label>',
+                    '<p class="field-help" data-i18n="windowInteractiveHelp"></p>',
+                '</div>',
                 '<div class="local-window" id="localWindow">',
                     '<div class="eyebrow" data-i18n="currentWindow"></div>',
                     '<div class="window-inline">',
@@ -100,6 +108,9 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                     '</button>',
                     '<button type="button" role="tab" id="tabWindows" aria-selected="false" aria-controls="windowsPage">',
                         '<span data-i18n="connectedWindows"></span><span id="windowCount" class="count"></span>',
+                    '</button>',
+                    '<button type="button" role="tab" id="tabRequests" aria-selected="false" aria-controls="requestsPage">',
+                        '<span data-i18n="requests"></span><span id="requestsCount" class="count"></span>',
                     '</button>',
                 '</nav>',
                 '<main>',
@@ -139,14 +150,18 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                         '<div id="windowEmpty" class="empty-state" hidden><div class="empty-icon" data-icon="monitor"></div>',
                             '<strong data-i18n="noWindows"></strong></div>',
                     '</section>',
+                    '<section role="tabpanel" id="requestsPage" aria-labelledby="tabRequests" hidden>',
+                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="pendingRequests"></h2>',
+                            '<span class="subline" data-i18n="requestsHelp"></span></div></div>',
+                        '<div id="requestsList" class="request-list" role="list"></div>',
+                        '<div id="requestsEmpty" class="empty-state" hidden>',
+                            '<strong data-i18n="noRequests"></strong></div>',
+                    '</section>',
                 '</main>',
                 '<footer class="footer">',
                     '<details class="help"><summary><span data-icon="info" aria-hidden="true"></span>',
                         '<span data-i18n="usageTitle"></span><span class="arrow" data-icon="chevron"></span></summary>',
                         '<p data-i18n="isolation"></p></details>',
-                    '<div class="footer-options"><label for="language" data-i18n="language"></label>',
-                        '<select id="language"><option value="auto" data-i18n="auto"></option>',
-                            '<option value="es">Español</option><option value="en">English</option></select></div>',
                 '</footer>',
             '</div>',
             '<div id="notice" role="status" aria-live="polite" hidden></div>',
@@ -157,14 +172,21 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
             undefined, this.context.subscriptions);
         view.onDidDispose(() => {
             this.view = undefined;
+            this.lastSnapshot = undefined;
             if (this.timer) {clearInterval(this.timer);}
             this.timer = undefined;
         }, undefined, this.context.subscriptions);
         if (this.timer) {clearInterval(this.timer);}
-        this.timer = setInterval(() => { void this.refresh(); }, 3000);
+        this.timer = setInterval(() => { void this.refresh(false); }, 3000);
         void this.refresh();
     }
     private async rememberUserShells(shells:Readonly<NonNullable<Snapshot['shells']>>):Promise<void> {
+        if(this.persistUserShell){
+            for(const shell of shells){
+                if(shell.origin==='user'){await this.persistUserShell(shell);}
+            }
+            return;
+        }
         const key='multiShellUserSessions';
         const previous=this.context.workspaceState.get<Array<{shell_id:string;initial_cwd:string;alias?:string}>>(key,[]);
         const updated=new Map(previous.map(x=>[x.shell_id,x]));
@@ -179,12 +201,13 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         }
     }
     private async forgetUserShell(id:string):Promise<void> {
+        if(this.deleteUserShell){await this.deleteUserShell(id);return;}
         const key='multiShellUserSessions';
         const previous=this.context.workspaceState.get<Array<{shell_id:string;initial_cwd:string;alias?:string}>>(key,[]);
         const next=previous.filter(x=>x.shell_id!==id);
         if(previous.length!==next.length){await this.context.workspaceState.update(key,next);}
     }
-    async refresh(): Promise<void> {
+    async refresh(force = true): Promise<void> {
         if (!this.view || this.busy) {return;}
         this.busy = true;
         try {
@@ -196,9 +219,12 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
             }
             snapshot.port = vscode.workspace.getConfiguration('multi-shell-mcp').get<number>('port') ?? 3000;
             snapshot.activePort=manager?.listeningPort;
-            await this.view.webview.postMessage({
-                type: 'state', snapshot, language: this.locale(), preference: this.language
-            });
+            const state={type:'state',snapshot,language:this.locale()};
+            const serialized=JSON.stringify(state);
+            if(force || this.lastSnapshot!==serialized){
+                const received=await this.view.webview.postMessage(state);
+                if(received!==false){this.lastSnapshot=serialized;}
+            }
         } catch (e) {
             await this.view?.webview.postMessage({ type: 'error', text: safeError(e) });
         } finally {
@@ -209,12 +235,6 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         if (!raw || typeof raw.type !== 'string') {return;}
         try {
             if (raw.type === 'refresh') { await this.refresh(); return; }
-            if (raw.type === 'language') {
-                if (raw.value !== 'auto' && raw.value !== 'es' && raw.value !== 'en') {return;}
-                this.language = raw.value;
-                await this.context.workspaceState.update('multiShellPanelLanguage', this.language);
-                await this.refresh(); return;
-            }
             if (raw.type === 'port') {
                 const port=Number(raw.value);
                 if(!Number.isInteger(port)||port<1024||port>65535){
@@ -233,6 +253,14 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                 await this.refresh();
                 return;
             }
+            if(raw.type==='window_interactive'){
+                if(typeof raw.value!=='boolean'){return;}
+                const live=this.getController();
+                if(!live){throw new Error('MultiShell MCP is not running.');}
+                live.panelSetWindowAutoExit(raw.value);
+                await this.context.workspaceState.update('multiShellWindowAutoExit',raw.value);
+                await this.refresh();return;
+            }
             if (raw.type === 'toggle') {
                 await vscode.commands.executeCommand('multi-shell-mcp.toggleServer');
                 await this.refresh(); return;
@@ -245,6 +273,20 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
             }
             const manager = this.getController();
             if (!manager) {throw new Error('MultiShell MCP is not running in this window.');}
+            if(raw.type==='request_decision'){
+                if(typeof raw.id!=='string'||typeof raw.value!=='boolean'){return;}
+                if(!manager.panelDecideUserRequest(raw.id,raw.value)){
+                    throw new Error(this.locale()==='es'?'La solicitud ha caducado.':'Request expired.');
+                }
+                await this.refresh();return;
+            }
+            if(raw.type==='shell_interactive'){
+                if(typeof raw.id!=='string'||!(typeof raw.value==='boolean'||raw.value===null)){return;}
+                manager.panelSetShellAutoExit(raw.id,raw.value===null?undefined:raw.value);
+                await this.context.workspaceState.update(
+                    'multiShellInteractiveShellOverrides',manager.panelGetShellOverrides());
+                await this.refresh();return;
+            }
             if (raw.type === 'alias') {
                 if(typeof raw.id!=='string'){throw new Error('Invalid shell ID');}
                 const shell=(await manager.panelState()).shells.find(s=>s.shell_id===raw.id);
@@ -261,9 +303,12 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                 if(raw.id===manager.primaryShellId){
                     await this.context.workspaceState.update('multiShellPrimaryAlias',updated.alias);
                 }else if(shell.origin==='user'){
-                    const key='multiShellUserSessions';
-                    const stored=this.context.workspaceState.get<Array<{shell_id:string;initial_cwd:string;alias?:string}>>(key,[]);
-                    await this.context.workspaceState.update(key,stored.map(item=>item.shell_id===raw.id?{...item,alias:updated.alias}:item));
+                    if(this.persistUserShell){await this.persistUserShell({...shell,alias:updated.alias});}
+                    else{
+                        const key='multiShellUserSessions';
+                        const stored=this.context.workspaceState.get<Array<{shell_id:string;initial_cwd:string;alias?:string}>>(key,[]);
+                        await this.context.workspaceState.update(key,stored.map(item=>item.shell_id===raw.id?{...item,alias:updated.alias}:item));
+                    }
                 }
                 await this.view?.webview.postMessage({type:'notice',key:'aliasSaved'});
             } else if (raw.type === 'create') {
@@ -290,17 +335,29 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                     if(!shell || raw.id===manager.primaryShellId){
                         throw new Error('This terminal cannot be closed from the panel.');
                     }
-                    const choice=this.locale()==='es'?'Cerrar terminal':'Close terminal';
-                    const confirmed=await vscode.window.showWarningMessage(
-                        this.locale()==='es'
-                            ? '¿Cerrar la terminal '+shell.shell_id+'? Se interrumpirán los comandos que siga ejecutando.'
-                            : 'Close terminal '+shell.shell_id+'? Any running commands will be interrupted.',
-                        {modal:true},choice);
-                    if(confirmed!==choice){
-                        await this.view?.webview.postMessage({type:'closeCancelled',id:raw.id});
-                        return;
+                    if(shell.origin!=='user'){
+                        const choice=this.locale()==='es'?'Cerrar terminal':'Close terminal';
+                        const confirmed=await vscode.window.showWarningMessage(
+                            this.locale()==='es'
+                                ? '¿Cerrar la terminal '+shell.shell_id+'? Se interrumpirán los comandos que siga ejecutando.'
+                                : 'Close terminal '+shell.shell_id+'? Any running commands will be interrupted.',
+                            {modal:true},choice);
+                        if(confirmed!==choice){
+                            await this.view?.webview.postMessage({type:'closeCancelled',id:raw.id});
+                            return;
+                        }
                     }
-                    await manager.panelCloseShell(raw.id);
+                    try{
+                        // Persistent user shells are confirmed in the owning worker.
+                        // Do not show a second prompt from the sidebar.
+                        await manager.panelCloseShell(raw.id);
+                    }catch(error){
+                        if(shell.origin==='user' && /not approved/i.test(safeError(error))){
+                            await this.view?.webview.postMessage({type:'closeCancelled',id:raw.id});
+                            return;
+                        }
+                        throw error;
+                    }
                     await this.forgetUserShell(raw.id);
                     await this.view?.webview.postMessage({ type: 'notice', key: 'closed' });
                 }
@@ -311,6 +368,7 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         }
     }
     dispose(): void {
+        this.lastSnapshot=undefined;
         if (this.timer) {clearInterval(this.timer);}
         this.timer = undefined;
         this.view = undefined;

@@ -1,0 +1,14 @@
+# Keep source/documentation LF on Windows and Linux, regardless of core.autocrlf.
+# This avoids noisy "LF will be replaced by CRLF" warnings in Git checks.
+* text=auto eol=lf
+
+# Treat build archives and media as binary.
+*.png -text
+*.jpg -text
+*.jpeg -text
+*.gif -text
+*.ico -text
+*.vsix -text
+*.zip -text
+*.exe -text
+*.dll -text

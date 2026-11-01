@@ -82,7 +82,19 @@
     commandLine: 'MCP · puerto',
     windowOffline: 'Inicia MultiShell MCP en esta ventana',
     countOne: 'terminal',
-    countMany: 'terminales'
+    countMany: 'terminales',
+    requests: 'Solicitudes',
+    pendingRequests: 'SOLICITUDES PENDIENTES',
+    requestsHelp: 'La IA no puede autorizar su propia solicitud',
+    noRequests: 'No hay solicitudes pendientes',
+    approveRequest: 'Autorizar creación',
+    rejectRequest: 'Rechazar',
+    requestExpires: 'Caduca',
+    windowInteractive: 'Salir automáticamente de comandos interactivos en esta ventana',
+    windowInteractiveHelp: 'Activado por defecto. Solo programas conocidos; cada terminal puede tener una excepción.',
+    enableAutoExit: 'Activar salida automática',
+    disableAutoExit: 'Desactivar salida automática',
+    inheritAutoExit: 'Utilizar ajuste de ventana'
   };
   const en = {
     subtitle: 'MCP control center',
@@ -164,7 +176,19 @@
     commandLine: 'MCP · port',
     windowOffline: 'Start MultiShell MCP in this window',
     countOne: 'terminal',
-    countMany: 'terminals'
+    countMany: 'terminals',
+    requests: 'Requests',
+    pendingRequests: 'PENDING REQUESTS',
+    requestsHelp: 'The AI cannot approve its own request',
+    noRequests: 'No pending requests',
+    approveRequest: 'Approve creation',
+    rejectRequest: 'Deny',
+    requestExpires: 'Expires',
+    windowInteractive: 'Automatically exit interactive commands in this window',
+    windowInteractiveHelp: 'Enabled by default. Only known programs; each terminal can override it.',
+    enableAutoExit: 'Enable automatic exit',
+    disableAutoExit: 'Disable automatic exit',
+    inheritAutoExit: 'Use window setting'
   };
 
   const glyphs = {
@@ -196,6 +220,15 @@
     chevron: ['m6 9 6 6 6-6'],
     more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
     'check-circle': ['M20 6 9 17l-5-5', 'M22 12a10 10 0 1 1-10-10'],
+    'log-out': [
+      'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4',
+      'M16 17l5-5-5-5',
+      'M21 12H9'
+    ],
+    'shield-check': [
+      'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z',
+      'm9 12 2 2 4-4'
+    ],
     message: [
       'M21 11.5a8.4 8.4 0 0 1-.9 3.8A8.5 8.5 0 0 1 12.5 20a8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3a8.5 8.5 0 0 1 8.5 8.5Z'
     ],
@@ -233,14 +266,13 @@
   function insertIcons(parent = document) {
     // Icons are generated from bundled SVG paths; never from workspace text.
     for (const node of parent.querySelectorAll('[data-icon]')) {
-      if (node.dataset.iconReady) continue;
+      if (node.dataset.iconReady) {continue;}
       node.replaceChildren(makeIcon(node.dataset.icon));
       node.dataset.iconReady = 'true';
     }
   }
   const $ = id => document.getElementById(id);
   let locale = 'en';
-  let preference = 'auto';
   let state = { running: false, port: 3000 };
   let activePage = 'shells';
   let formOpen = false;
@@ -255,8 +287,8 @@
     vscode.postMessage(Object.assign({ type }, more));
   function el(tag, classes, text) {
     const node = document.createElement(tag);
-    if (classes) node.className = classes;
-    if (text !== undefined) node.textContent = text;
+    if (classes) {node.className = classes;}
+    if (text !== undefined) {node.textContent = text;}
     return node;
   }
   function commandButton(key, title, onclick, danger = false) {
@@ -280,7 +312,7 @@
   }
   function requestClose(shell) {
     const id=shell.shell_id;
-    if(closingIds.has(id)) return;
+    if(closingIds.has(id)) {return;}
     closingIds.add(id);
     send('close',{id});
     renderShells();
@@ -296,20 +328,20 @@
     node.textContent = message;
     node.hidden = false;
     node.classList.toggle('error', isError);
-    if (toastTimer) clearTimeout(toastTimer);
+    if (toastTimer) {clearTimeout(toastTimer);}
     toastTimer = setTimeout(() => {
       node.hidden = true;
     }, 3800);
   }
   function baseName(p) {
-    if (!p) return t('noProject');
+    if (!p) {return t('noProject');}
     const parts = p.split(/[\\/]/).filter(Boolean);
     return parts.at(-1) || p;
   }
   function localize() {
     document.documentElement.lang = locale;
     for (const node of document.querySelectorAll('[data-i18n]'))
-      node.textContent = t(node.dataset.i18n);
+      {node.textContent = t(node.dataset.i18n);}
     for (const node of document.querySelectorAll('[data-aria-i18n]')) {
       node.setAttribute('aria-label', t(node.dataset.ariaI18n));
       node.title = t(node.dataset.ariaI18n);
@@ -317,7 +349,6 @@
     for (const node of document.querySelectorAll('[data-placeholder-i18n]')) {
       node.placeholder = t(node.dataset.placeholderI18n);
     }
-    $('language').value = preference;
     $('searchShells').setAttribute('aria-label', t('search'));
   }
   function drawHeader() {
@@ -332,7 +363,7 @@
     $('toggle').textContent = t(state.running ? 'stop' : 'start');
     $('toggle').disabled = busyAction;
     const portInput=$('portInput');
-    if(document.activeElement!==portInput && !portBusy)portInput.value=String(state.port||3000);
+    if(document.activeElement!==portInput && !portBusy){portInput.value=String(state.port||3000);}
     const newPort=Number(portInput.value);
     $('savePort').disabled=portBusy||!Number.isInteger(newPort)||newPort<1024||newPort>65535||
       newPort===state.port;
@@ -346,8 +377,11 @@
     $('copyWindow').disabled = !state.windowId;
     $('shellCount').textContent = String((state.shells || []).length);
     $('windowCount').textContent = String((state.windows || []).length);
+    $('requestsCount').textContent = String((state.requests || []).length);
+    $('windowInteractive').checked = state.windowAutoExit !== false;
+    $('windowInteractive').disabled = !state.running;
     for (const field of $('shellForm').elements)
-      field.disabled = !state.running;
+      {field.disabled = !state.running;}
     $('newShell').disabled = !state.running;
     $('newShell').setAttribute('aria-expanded', String(formOpen));
     $('newShell').classList.toggle('selected', formOpen);
@@ -357,8 +391,8 @@
     const target = $('shells');
     target.replaceChildren();
     const all = (state.shells || []).slice().sort((a, b) => {
-      if (a.shell_id === state.primary) return -1;
-      if (b.shell_id === state.primary) return 1;
+      if (a.shell_id === state.primary) {return -1;}
+      if (b.shell_id === state.primary) {return 1;}
       return a.shell_id.localeCompare(b.shell_id);
     });
     $('shellMeta').textContent =
@@ -380,6 +414,7 @@
       const item = el('div', 'shell-row' + (primary ? ' is-primary' : ''), '');
       item.setAttribute('role', 'listitem');
       item.classList.toggle('is-closing',closingIds.has(shell.shell_id));
+      item.classList.toggle('menu-open',openMenu===shell.shell_id);
       const open = el('button', 'row-main');
       open.type = 'button';
       open.title = t('show');
@@ -394,9 +429,9 @@
       const aliasLine = el('span', 'shell-alias', 'shell='+(shell.alias||shell.shell_id));
       aliasLine.title = 'shell='+(shell.alias||shell.shell_id);
       if (primary)
-        nameLine.append(el('span', 'primary-indicator', t('primaryTag')));
+        {nameLine.append(el('span', 'primary-indicator', t('primaryTag')));}
       if (!primary && shell.origin)
-        nameLine.append(el('span', 'origin-indicator', t(shell.origin === 'user' ? 'originUser' : shell.origin === 'automatic' ? 'originAutomatic' : 'originMcp')));
+        {nameLine.append(el('span', 'origin-indicator', t(shell.origin === 'user' ? 'originUser' : shell.origin === 'automatic' ? 'originAutomatic' : 'originMcp')));}
       const idLine = el(
         'span',
         'shell-id subline',
@@ -409,7 +444,7 @@
         t(shell.recovery_required ? 'recoveredShell' : shell.timed_out_running ? 'timedOutRunning' : shell.busy ? 'busy' : 'idle')
       );
       if (shell.queued > 0)
-        status.textContent += ' · ' + t('queued') + ': ' + shell.queued;
+        {status.textContent += ' · ' + t('queued') + ': ' + shell.queued;}
       details.append(nameLine, aliasLine, idLine, status);
       open.append(leading, details);
       open.addEventListener('click', () =>
@@ -422,8 +457,8 @@
         )
       );
       actions.append(commandButton('message', t('copyInstruction'), () => copyInstruction(shell)));
-      if(shell.recovery_required){
-        const restore=commandButton('check-circle',t('enableRestored'),()=>send('confirm_restore',{id:shell.shell_id}));
+      if((shell.recovery_required || shell.timed_out_running)){
+        const restore=commandButton('shield-check',t('enableRestored'),()=>send('confirm_restore',{id:shell.shell_id}));
         actions.append(restore);
       }
       if (!primary) {
@@ -461,8 +496,24 @@
             renderShells();
           })
         );
+        options.append(menuButton(
+          'log-out',
+          t(shell.auto_exit_interactive===false?'enableAutoExit':'disableAutoExit'),
+          ()=>{
+            openMenu=null;
+            send('shell_interactive',{id:shell.shell_id,value:shell.auto_exit_interactive===false});
+            renderShells();
+          }
+        ));
+        if(typeof shell.auto_exit_override==='boolean'){
+          options.append(menuButton('refresh',t('inheritAutoExit'),()=>{
+            openMenu=null;
+            send('shell_interactive',{id:shell.shell_id,value:null});
+            renderShells();
+          }));
+        }
         if (!primary)
-          options.append(
+          {options.append(
             menuButton(
               'trash',
               t('close'),
@@ -473,7 +524,7 @@
               },
               true
             )
-          );
+          );}
         overflow.append(options);
       }
       actions.append(overflow);
@@ -495,7 +546,7 @@
       const center = el('div', 'window-info');
       const line = el('div', 'window-title');
       line.append(el('strong', null, baseName(win.workspace)));
-      if (here) line.append(el('span', 'current-tag', t('you')));
+      if (here) {line.append(el('span', 'current-tag', t('you')));}
       const id = el('div', 'window-id mono', win.window_id);
       const dir = el('div', 'window-dir', win.workspace);
       id.title = win.window_id;
@@ -511,20 +562,49 @@
       target.append(row);
     }
   }
+  function renderRequests() {
+    const target=$('requestsList');
+    target.replaceChildren();
+    const pending=state.requests||[];
+    $('requestsEmpty').hidden=pending.length!==0;
+    for(const request of pending){
+      const row=el('div','approval-request');
+      row.setAttribute('role','listitem');
+      row.append(el('strong','request-id',request.shell_id));
+      row.append(el('div','subline path',request.cwd));
+      row.append(el('div','subline',t('allowShare')+': '+(request.share?'✓':'—')));
+      const actions=el('div','request-actions');
+      const approve=el('button','add-button',t('approveRequest'));
+      approve.type='button';
+      approve.addEventListener('click',()=>send('request_decision',{id:request.request_id,value:true}));
+      const deny=el('button','quiet',t('rejectRequest'));
+      deny.type='button';
+      deny.addEventListener('click',()=>send('request_decision',{id:request.request_id,value:false}));
+      actions.append(approve,deny);
+      row.append(actions);
+      target.append(row);
+    }
+  }
   function switchPage(target) {
     activePage = target;
-    $('tabShells').setAttribute('aria-selected', String(target === 'shells'));
-    $('tabWindows').setAttribute('aria-selected', String(target === 'windows'));
-    $('shellsPage').hidden = target !== 'shells';
-    $('windowsPage').hidden = target !== 'windows';
-    if (target === 'shells') renderShells();
-    else renderWindows();
+    for(const [key,tab,page] of [
+      ['shells','tabShells','shellsPage'],
+      ['windows','tabWindows','windowsPage'],
+      ['requests','tabRequests','requestsPage']
+    ]){
+      $(tab).setAttribute('aria-selected',String(target===key));
+      $(page).hidden=target!==key;
+    }
+    if(target==='shells'){renderShells();}
+    else if(target==='windows'){renderWindows();}
+    else{renderRequests();}
   }
   function draw() {
     localize();
     drawHeader();
     renderShells();
     renderWindows();
+    renderRequests();
     switchPage(activePage);
   }
   function setForm(open) {
@@ -532,14 +612,16 @@
     $('createPanel').hidden = !formOpen || !state.running;
     $('newShell').classList.toggle('selected', formOpen);
     $('newShell').setAttribute('aria-expanded', String(formOpen));
-    if (open) $('shellId').focus();
+    if (open) {$('shellId').focus();}
   }
   function handleTabKeys(event) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'){return;}
     event.preventDefault();
-    const next = activePage === 'shells' ? 'windows' : 'shells';
+    const tabs=['shells','windows','requests'];
+    const index=tabs.indexOf(activePage);
+    const next=tabs[(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];
     switchPage(next);
-    $(next === 'shells' ? 'tabShells' : 'tabWindows').focus();
+    $({shells:'tabShells',windows:'tabWindows',requests:'tabRequests'}[next]).focus();
   }
   insertIcons();
   $('refresh').addEventListener('click', () => send('refresh'));
@@ -548,7 +630,7 @@
     event.preventDefault();
     const port=Number($('portInput').value);
     if(!Number.isInteger(port)||port<1024||port>65535){notify(t('invalidPort'),true);return;}
-    if(port===state.port)return;
+    if(port===state.port){return;}
     portBusy=true;
     drawHeader();
     send('port',{value:port});
@@ -559,12 +641,17 @@
     send('toggle');
   });
   $('copyWindow').addEventListener('click', () => {
-    if (state.windowId) send('copy', { value: state.windowId });
+    if (state.windowId) {send('copy', { value: state.windowId });}
   });
   $('tabShells').addEventListener('click', () => switchPage('shells'));
   $('tabWindows').addEventListener('click', () => switchPage('windows'));
+  $('tabRequests').addEventListener('click', () => switchPage('requests'));
+  $('windowInteractive').addEventListener('change',event=>{
+    send('window_interactive',{value:event.target.checked});
+  });
   $('tabShells').addEventListener('keydown', handleTabKeys);
   $('tabWindows').addEventListener('keydown', handleTabKeys);
+  $('tabRequests').addEventListener('keydown', handleTabKeys);
   $('newShell').addEventListener('click', () => setForm(!formOpen));
   $('cancelCreate').addEventListener('click', () => setForm(false));
   $('formCancel').addEventListener('click', () => setForm(false));
@@ -572,9 +659,6 @@
     search = event.target.value;
     renderShells();
   });
-  $('language').addEventListener('change', event =>
-    send('language', { value: event.target.value })
-  );
   $('shellForm').addEventListener('submit', event => {
     event.preventDefault();
     const id = $('shellId').value.trim();
@@ -586,7 +670,7 @@
       if (openMenu) {
         openMenu = null;
         renderShells();
-      } else if (formOpen) setForm(false);
+      } else if (formOpen) {setForm(false);}
     }
   });
   document.addEventListener('click', event => {
@@ -597,13 +681,12 @@
   });
   window.addEventListener('message', event => {
     const data = event.data;
-    if (!data || typeof data !== 'object') return;
+    if (!data || typeof data !== 'object') {return;}
     if (data.type === 'state') {
       state = data.snapshot || { running: false };
       const active=new Set((state.shells||[]).map(shell=>shell.shell_id));
       for(const id of closingIds){if(!active.has(id)){closingIds.delete(id);}}
       locale = data.language === 'es' ? 'es' : 'en';
-      preference = data.preference || 'auto';
       busyAction = false;
       draw();
     } else if (data.type === 'notice') {

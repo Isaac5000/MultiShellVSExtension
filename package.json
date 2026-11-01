@@ -3,7 +3,7 @@
   "icon": "media/logo.png",
   "displayName": "MultiShell MCP Server",
   "description": "Multi-window VSCode MCP server with bilingual terminal panel, scoped shells and legacy connector support",
-  "version": "0.10.10",
+  "version": "0.10.25",
   "publisher": "local-multishell",
   "license": "MIT",
   "engines": {
@@ -32,6 +32,11 @@
           "default": false,
           "description": "Whether the MCP server should be enabled by default on VS Code startup"
         },
+        "multi-shell-mcp.interactiveAutoExit": {
+          "type": "boolean",
+          "default": true,
+          "description": "%multiShell.interactiveAutoExitDesc%"
+        },
         "multi-shell-mcp.enabledTools": {
           "type": "object",
           "default": {
@@ -42,11 +47,11 @@
           "properties": {
             "file": {
               "type": "boolean",
-              "description": "Enable file operations tools (read, write, list files)"
+              "description": "Enable scoped file reading and directory listing tools"
             },
             "edit": {
               "type": "boolean",
-              "description": "Enable file editing tools (create, edit, delete files)"
+              "description": "Enable scoped file creation, modification, copy, move and rename tools"
             },
             "shell": {
               "type": "boolean",
@@ -91,10 +96,9 @@
     "vscode:prepublish": "npm run bundle",
     "compile": "node scripts/clean-out.cjs && tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile",
-    "lint": "eslint src",
+    "lint": "eslint src media/panel.js --max-warnings 0",
     "test": "npm run test:multishell",
-    "package": "npm run bundle && vsce package --allow-missing-repository --no-rewrite-relative-links",
+    "package": "vsce package --allow-missing-repository --no-rewrite-relative-links",
     "test:multishell": "npm run compile && node scripts/bundle.cjs && node scripts/run-tests.cjs",
     "test:panel": "node test/test-panel.cjs && node test/test-panel-layout.cjs",
     "bundle": "npm run compile && node scripts/bundle.cjs"
@@ -105,7 +109,7 @@
     "@types/vscode": "^1.99.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
-    "@vscode/vsce": "^3.6.0",
+    "@vscode/vsce": "4.1.0",
     "esbuild": "^0.28.2",
     "eslint": "^9.23.0",
     "proxyquire": "^2.1.3",

@@ -2,5 +2,6 @@
   "multiShell.container": "MultiShell MCP Server",
   "multiShell.sessions": "Terminals",
   "multiShell.toggle": "MultiShell MCP: Toggle Server",
-  "multiShell.info": "MultiShell MCP: Show Server Information"
+  "multiShell.info": "MultiShell MCP: Show Server Information",
+  "multiShell.interactiveAutoExitDesc": "Automatically quit recognized standalone interactive terminal programs (for example less, more or top). A per-window switch and per-terminal override are available in the MultiShell panel."
 }

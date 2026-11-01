@@ -122,6 +122,10 @@ main { min-height: 150px; }
 .shell-row { position:relative; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; min-width:0; gap:4px;
   border-radius:6px; padding:5px 4px; min-height:80px; }
 .shell-row:hover, .shell-row:focus-within { background: var(--vscode-list-hoverBackground); }
+/* Elevate the entire open row, not just its actions: otherwise later rows
+   paint over the popup because they have their own stacking contexts. */
+.shell-row.menu-open { z-index: 40; isolation: isolate; }
+
 .shell-row.is-primary .terminal-icon { background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent);
   color: var(--vscode-textLink-foreground); }
 .row-main { grid-column:1; width:100%; min-width:0; overflow:hidden; display:flex; align-items:flex-start; gap:8px;
@@ -255,3 +259,22 @@ form .checkline { display:flex; align-items:flex-start; gap:8px; font-size:11px;
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after { transition:none !important; animation:none !important; }
 }
+/* Interactive command protection, per-window default. */
+.interactive-settings {margin:0 15px 12px;padding:9px 11px;
+  border:1px solid var(--vscode-panel-border);border-radius:5px;}
+.interactive-settings .checkline {display:flex;align-items:center;gap:9px;
+  font-size:11px;line-height:1.4;cursor:pointer;}
+.interactive-settings .checkline input {flex:none;}
+.interactive-settings .field-help {color:var(--vscode-descriptionForeground);
+  font-size:10px;margin:5px 0 0 22px;}
+.request-list {display:flex;flex-direction:column;gap:8px;padding:6px 15px 15px;}
+.approval-request {display:flex;flex-direction:column;gap:5px;min-width:0;
+  padding:11px;border:1px solid var(--vscode-panel-border);border-radius:5px;}
+.approval-request .request-id {overflow-wrap:anywhere;}
+.approval-request .path {font:11px var(--vscode-editor-font-family,monospace);
+  overflow-wrap:anywhere;}
+.request-actions {display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;}
+.request-actions .quiet {border:1px solid var(--vscode-panel-border);
+  color:var(--vscode-foreground);background:transparent;border-radius:4px;
+  padding:7px 9px;font-size:11px;}
+.request-actions .quiet:hover {background:var(--vscode-list-hoverBackground);}

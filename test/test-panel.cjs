@@ -13,6 +13,9 @@ const conf = {};
 let port = 3000;
 let closeDecision;
 const userShells=[];
+const requests=[{request_id:'abc123',shell_id:'awaiting',cwd:'C:\\projects\\project\\other',share:false}];
+let windowAutoExit=true;
+let overrides={};
 const mock = {
   env: {
     language: 'es-ES',
@@ -38,7 +41,7 @@ const mock = {
   window: {showInputBox:async options=>{calls.push(['prompt', options.value]);return 'minecraft';},
     showWarningMessage:async(message,options,action)=>{
       calls.push(['confirmPrompt',message,options?.modal,action]);
-      return action==='Confirm idle'?'Confirm idle':closeDecision;
+      return action==='Confirm idle'||action==='Confirmar disponible'?action:closeDecision;
     }}
 };
 const { MultiShellPanel } = proxyquire('../out/panel.js', { vscode: mock });
@@ -60,6 +63,8 @@ const controller = {
       windowId: 'project-abcdef01',
       workspace: 'C:\\projects\\project',
       primary: 'main-project-abcdef01',
+      requests: requests.slice(),
+      windowAutoExit,
       shells: [
         {
           shell_id: 'main-project-abcdef01',
@@ -84,10 +89,33 @@ const controller = {
     userShells.push(created);
     return created;
   },
-  panelCloseShell: async id => {calls.push(['close', id]);const idx=userShells.findIndex(x=>x.shell_id===id);if(idx>=0)userShells.splice(idx,1);},
+  panelCloseShell: async id => {
+    if(userShells.some(shell=>shell.shell_id===id)){
+      const action='Close user terminal';
+      const accepted=await mock.window.showWarningMessage(
+        'Close persistent user shell '+id+'?',{modal:true},action);
+      if(accepted!==action){throw new Error('User terminal closure was not approved.');}
+    }
+    calls.push(['close',id]);
+    const idx=userShells.findIndex(x=>x.shell_id===id);
+    if(idx>=0){userShells.splice(idx,1);}
+  },
   panelConfirmRestoredShell: async id => {calls.push(['confirmRestored',id]);return {shell_id:id,recovery_required:false};},
   panelSetAlias: async(id,alias)=>{calls.push(['alias',id,alias]);return {shell_id:id,alias};},
-  panelShowShell: id => calls.push(['show', id])
+  panelShowShell: id => calls.push(['show', id]),
+  panelSetWindowAutoExit: enabled =>{windowAutoExit=enabled;calls.push(['window-auto',enabled]);},
+  panelSetShellAutoExit:(id,value)=>{
+    if(value===undefined){delete overrides[id];}else{overrides[id]=value;}
+    calls.push(['shell-auto',id,value]);
+  },
+  panelGetShellOverrides:()=>({...overrides}),
+  panelDecideUserRequest:(id,approve)=>{
+    const index=requests.findIndex(x=>x.request_id===id);
+    if(index<0){return false;}
+    requests.splice(index,1);
+    calls.push(['request',id,approve]);
+    return true;
+  }
 };
 const view = {
   webview: {
@@ -112,13 +140,22 @@ async function main() {
   panel.resolveWebviewView(view);
   await wait(30);
   assert.match(view.webview.html, /id="shellForm"/);
+  assert.match(view.webview.html, /id="tabRequests"/);
+  assert.match(view.webview.html, /id="requestsPage"/);
+  assert.match(view.webview.html, /id="windowInteractive"/);
+  assert.equal(sent.findLast(m=>m.type==='state').snapshot.requests.length,1);
   assert.match(view.webview.html, /media\/panel.js/);
   assert.match(view.webview.html, /Content-Security-Policy/);
   assert.equal(sent.findLast(m => m.type === 'state').language, 'es');
-  handler({ type: 'language', value: 'en' });
-  await wait(20);
-  assert.equal(conf.multiShellPanelLanguage, 'en');
-  assert.equal(sent.findLast(m => m.type === 'state').language, 'en');
+  assert.doesNotMatch(view.webview.html, /id="language"/);
+  // Locale follows VS Code; an old manual preference must have no effect.
+  conf.multiShellPanelLanguage='en';
+  mock.env.language='fr-FR';
+  await panel.refresh();
+  assert.equal(sent.findLast(m=>m.type==='state').language,'en');
+  mock.env.language='es-ES';
+  await panel.refresh();
+  assert.equal(sent.findLast(m=>m.type==='state').language,'es');
   handler({
     type: 'create',
     id: 'my_shell',
@@ -133,6 +170,21 @@ async function main() {
   await wait(60);
   assert.equal(conf.multiShellUserSessions?.find(x=>x.shell_id==='my_shell')?.origin,undefined);
   assert.equal(conf.multiShellUserSessions?.find(x=>x.shell_id==='my_shell')?.initial_cwd,'C:\\projects\\project');
+  handler({type:'window_interactive',value:false});
+  await wait(25);
+  assert.equal(windowAutoExit,false);
+  assert.equal(conf.multiShellWindowAutoExit,false);
+  handler({type:'shell_interactive',id:'my_shell',value:true});
+  await wait(25);
+  assert.equal(overrides.my_shell,true);
+  assert.equal(conf.multiShellInteractiveShellOverrides.my_shell,true);
+  handler({type:'shell_interactive',id:'my_shell',value:null});
+  await wait(25);
+  assert.equal(overrides.my_shell,undefined);
+  handler({type:'request_decision',id:'abc123',value:false});
+  await wait(25);
+  assert.ok(calls.some(x=>x[0]==='request'&&x[1]==='abc123'&&x[2]===false));
+  assert.equal(sent.findLast(m=>m.type==='state').snapshot.requests.length,0);
   handler({type:'confirm_restore',id:'old_user'});
   await wait(30);
   assert.ok(calls.some(x=>x[0]==='confirmRestored'&&x[1]==='old_user'));
@@ -160,8 +212,8 @@ async function main() {
   assert.ok(sent.some(x=>x.type==='closeCancelled'&&x.id==='my_shell'));
   assert.equal(calls.filter(x=>x[0]==='close').length,0);
   assert.equal(conf.multiShellUserSessions?.some(x=>x.shell_id==='my_shell'),true);
-  assert.ok(calls.some(x=>x[0]==='confirmPrompt'&&x[2]===true&&x[3]==='Close terminal'));
-  closeDecision='Close terminal';
+  assert.ok(calls.some(x=>x[0]==='confirmPrompt'&&x[2]===true&&x[3]==='Close user terminal'));
+  closeDecision='Close user terminal';
   handler({type:'close',id:'my_shell'});
   await wait(30);
   assert.equal(conf.multiShellUserSessions?.some(x=>x.shell_id==='my_shell'),false);
@@ -188,7 +240,7 @@ async function main() {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", 'package.json'), 'utf8')
   );
-  assert.equal(manifest.version, '0.10.10');
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.ok(
     manifest.contributes.views['multi-shell-mcp'].some(
       v => v.id === 'multi-shell-mcp.sessions'
@@ -200,7 +252,7 @@ async function main() {
   );
   assert.match(win, /this\.ensurePrimary\(\);/);
   console.log(
-    'PASS: bilingual panel, language preference, webview buttons, bundled assets and automatic main-shell registration'
+    'PASS: panel locale follows VS Code, user controls, bundled assets and automatic main-shell registration'
   );
 }
 main().catch(e => {

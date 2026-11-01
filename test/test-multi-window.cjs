@@ -49,6 +49,7 @@ const test=async()=>{
    assert.match(rb.output,/beta.*echo B/);
    assert.ok(Date.now()-started<340,'parallel routed commands should overlap');
    assert.deepEqual((await router.list()).map(x=>x.shell_id).sort(),['alpha','beta']);
+   fs.mkdirSync(path.join(rootA,'nested')); // Match real ShellManager: cwd must exist.
    const relative=await router.create('relative','nested',false,a.id);
    assert.equal(relative.initial_cwd,path.resolve(rootA,'nested'),'relative directory must be based on owner workspace');
    await router.close('relative');

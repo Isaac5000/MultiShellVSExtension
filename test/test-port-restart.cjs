@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const proxyquire=require('proxyquire').noCallThru();
 
 let configuredPort=3000;
+let configuredTools={file:true,edit:true,shell:true};
 let configChanged;
 let statusItem;
 const alerts=[];
@@ -20,7 +21,7 @@ const vscode={
   workspace:{
     workspaceFolders:[{uri:{fsPath:'C:\\testproject'}}],
     getConfiguration:()=>({
-      get:(key)=>({port:configuredPort,defaultEnabled:true,enabledTools:{file:true,edit:true,shell:true}})[key],
+      get:(key)=>({port:configuredPort,defaultEnabled:true,enabledTools:configuredTools})[key],
       update:async(key,value,target)=>{
         assert.equal(key,'port');assert.equal(target,1);
         configuredPort=value;
@@ -43,6 +44,7 @@ class FakeController {
   async start(){
     events.push('started:'+this.listeningPort);
     if(this.listeningPort===4400)throw new Error('Port busy');
+    if(this.listeningPort===4500)await delay(120);
     this.status('hub','test');
   }
   async stop(preserve=false){events.push('stopped:'+this.listeningPort);if(preserve){events.push('preserved:'+this.listeningPort);}}
@@ -82,7 +84,23 @@ async function main(){
     assert.ok(events.filter(x=>x==='started:4300').length>=2,'Previous port must restart');
     assert.equal(statusItem.text,'MultiShell MCP: ON · 4300');
     assert.ok(alerts.some(x=>x.includes('4400')),'Failed port must be reported');
-    console.log('PASS: shared MCP port change restarts running window, status shows actual port, rollback on busy port');
-  }finally{await extension.deactivate();assert.ok(events.includes('preserved:4300'),'Extension unload must preserve VSCode terminals');}
+    const before=events.length;
+    configuredTools={file:true,edit:false,shell:true};
+    configChanged({affectsConfiguration:key=>key==='multi-shell-mcp.enabledTools'});
+    await delay(60);
+    assert.ok(events.length>before,'Changing tool permissions must restart the running server');
+    assert.ok(events.filter(x=>x==='started:4300').length>=3,
+      'The shared port must be preserved while tool permissions change');
+    configuredPort=4500;
+    configChanged({affectsConfiguration:key=>key==='multi-shell-mcp.port'});
+    await delay(25);
+    configuredPort=4600;
+    configChanged({affectsConfiguration:key=>key==='multi-shell-mcp.port'});
+    await delay(270);
+    assert.ok(events.includes('started:4500'));
+    assert.ok(events.includes('started:4600'),'A newer port change must not be ignored');
+    assert.equal(statusItem.text,'MultiShell MCP: ON · 4600');
+    console.log('PASS: port rollback, live tool-permission reload, queued rapid config changes, preserved terminals');
+  }finally{await extension.deactivate();assert.ok(events.includes('preserved:4600'),'Extension unload must preserve VSCode terminals');}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

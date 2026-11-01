@@ -63,7 +63,9 @@ async function main(){
    const tools=await rpc('tools/list');
    const names=tools.result.tools.map(t=>t.name);
    assert.ok(names.includes('create_shell_code')&&names.includes('execute_shell_command_code'));
-   assert.equal(names.length,17,'Expected five shell, eight scoped file and four native VSCode tools');
+   assert.ok(names.includes('execute_isolated_command_code'),'Noninteractive isolated execution must be exposed');
+   assert.equal(names.length,19,'Expected seven shell, eight scoped file and four native VSCode tools');
+   assert.ok(names.includes('create_user_shell_code'),'Persistent user terminal creation must require a separate approval tool');
    const call=async(name,args)=> {
       const r=await rpc('tools/call',{name,arguments:args});
       assert.ok(r.result?.content,'tool result missing '+name);

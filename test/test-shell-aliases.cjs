@@ -59,8 +59,8 @@ async function main(){
    }
    assert.equal(replacement.resolve('minecraft'),'main-'+workers[0].id);
    assert.equal(replacement.resolve('1-2'),'main-'+workers[1].id);
-   await replacement.close('minecraft');
-   assert.throws(()=>replacement.resolve('minecraft'),/Unknown/);
+   await assert.rejects(replacement.close('minecraft'),/main shell cannot be closed/i);
+   assert.equal(replacement.resolve('minecraft'),'main-'+workers[0].id);
    console.log('PASS: numeric aliases, unique collisions, custom names, legacy selectors, failover and close cleanup');
  }finally{
    await Promise.all(workers.map(w=>w.stop()));

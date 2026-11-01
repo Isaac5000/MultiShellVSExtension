@@ -54,19 +54,25 @@ const original=terminal('MCP ['+mainId+']',workspace);
 const gay=terminal('MCP [gay]',nested);
 const externalUser=terminal('MCP [outside_user]',external);
 const ignored=terminal('MCP [other_mcp]',foreign);
+const temporary=terminal('MCP [temp_job]',nested);
 const ordinary=terminal('PowerShell',nested);
 async function main(){
  try {
-  vscode.window.terminals=[ordinary,original,gay,externalUser,ignored];
+  vscode.window.terminals=[ordinary,original,gay,externalUser,ignored,temporary];
   const first=new ShellManager();
   assert.equal(first.restoreMainTerminals(workspace,mainId),mainId);
-  const recovered=first.restoreUserTerminals(workspace,[{shell_id:'outside_user',initial_cwd:external,alias:'externalalias'}]);
+  const recovered=first.restoreUserTerminals(workspace,[
+    {shell_id:'gay',initial_cwd:nested},
+    {shell_id:'outside_user',initial_cwd:external,alias:'externalalias'}
+  ]);
   assert.deepEqual(recovered.map(s=>s.shell_id),['gay','outside_user']);
   const gayDescription=first.list().find(s=>s.shell_id==='gay');
   assert.equal(gayDescription.origin,'user');
   assert.equal(gayDescription.recovery_required,true);
   assert.equal(gayDescription.initial_cwd,fs.realpathSync(nested));
   assert.equal(first.list().some(s=>s.shell_id==='other_mcp'),false,'foreign workspace must not be adopted');
+  assert.equal(first.list().some(s=>s.shell_id==='temp_job'),false,
+    'A temporary MCP terminal must not be promoted to persistent USER ownership');
   assert.equal(events.length,0,'no replacement terminals may be created');
   await assert.rejects(first.execute('gay','must not run before confirmation'),/requires confirmation/);
   assert.equal(first.root('gay'),fs.realpathSync(nested),'file tools remain scoped to original cwd');
@@ -94,6 +100,8 @@ async function main(){
   assert.equal(second.list().find(s=>s.shell_id==='gay').recovery_required,true);
   assert.equal(second.root('gay'),fs.realpathSync(nested),'saved cwd survives missing creationOptions.cwd');
   assert.equal(second.list().some(s=>s.shell_id==='untracked'),false,'no unsaved terminal can be recovered without cwd');
+  assert.equal(second.restoreUserTerminals(workspace,[]).length,0,
+    'A valid name and workspace cwd alone are not sufficient to adopt a user shell');
   assert.equal(second.restoreUserTerminals(workspace,[{shell_id:'dupe',initial_cwd:nested}]).length,0,'ambiguous physical terminal ID must be rejected');
   assert.equal(events.length,0,'restoring must not create physical terminal');
   // Reject stale saved ownership pointing at another physical cwd.
@@ -104,7 +112,7 @@ async function main(){
   assert.equal(second.restoreUserTerminals(workspace,saved).length,0,'closed terminal must not be recreated');
   second.dispose(true);
 
-  console.log('PASS: existing user terminals restored by exact name and cwd; preserved across reload; old untracked shell recovered only in same workspace; explicit idle confirmation; never adopt foreign project or reopen closed shell');
+  console.log('PASS: only persisted USER terminals restore; TEMP, untracked, foreign and duplicate physical terminals are never adopted');
  }finally{
   fs.rmSync(temp,{recursive:true,force:true});
  }

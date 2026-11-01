@@ -13,3 +13,7 @@ CLAUDE.md
 *-portable.zip
 __pycache__/
 *.py[cod]
+tunnel-client-v*/
+
+# Local reports from reproducible live-MCP diagnostics
+scripts/probe-live-*-results.json

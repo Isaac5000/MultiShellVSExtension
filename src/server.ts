@@ -31,6 +31,7 @@ export interface ToolConfiguration {
 export class MCPServer {
   private readonly app = express();
   private httpServer?: Server;
+  private healthy = false;
   private readonly sessions = new Set<{
     transport: StreamableHTTPServerTransport;
     mcp: McpServer;
@@ -48,6 +49,31 @@ export class MCPServer {
     private readonly registrationRouter?: WindowRouter
   ) {
     this.app.use(express.json({ limit: '2mb' }));
+    // The tunnel's server-to-server requests normally omit Origin. Do not
+    // introduce OAuth or custom headers that would break its no-auth profile.
+    this.app.use((req,res,next)=>{
+      // DNS rebinding defense: Host must be a loopback literal or localhost.
+      // Tunnel Client connects to 127.0.0.1, so this adds no credentials.
+      const hostHeader=req.headers.host;
+      if(typeof hostHeader!=='string' ||
+        !/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i.test(hostHeader)){
+        res.status(403).json({error:'Untrusted request host'});
+        return;
+      }
+      const origin=req.headers.origin;
+      if(!origin){next();return;}
+      let permitted=false;
+      try{
+        const value=new URL(origin);
+        const hostname=value.hostname.toLowerCase();
+        permitted=(value.protocol==='http:' &&
+          ['localhost','127.0.0.1','[::1]'].includes(hostname)) ||
+          (value.protocol==='https:' &&
+          ['chatgpt.com','api.openai.com'].includes(hostname));
+      }catch{/* Invalid browser Origin. */}
+      if(!permitted){res.status(403).json({error:'Untrusted request origin'});return;}
+      next();
+    });
     this.app.post(REGISTER_PATH, async (req, res) => {
       if (!this.registrationRouter) {
         res.status(404).end();
@@ -94,6 +120,7 @@ export class MCPServer {
           cwd?: string;
           share?: boolean;
           origin?: 'user';
+          panelPermit?: string;
           window_id?: string;
           alias?: string;
         };
@@ -101,13 +128,9 @@ export class MCPServer {
         if (m.op === 'windows') {result = this.registrationRouter.windows();}
         else if (m.op === 'create') {
           if (!m.window_id) {throw new Error('Explicit window_id required.');}
-          result = await this.registrationRouter.create(
-            m.id!,
-            m.cwd,
-            m.share === true,
-            m.window_id,
-            m.origin === 'user' ? 'user' : 'mcp'
-          );
+          result = m.origin==='user'
+            ? await this.registrationRouter.createPanelUser(m.id!,m.cwd,m.share===true,m.window_id,m.panelPermit)
+            : await this.registrationRouter.create(m.id!,m.cwd,m.share===true,m.window_id);
         } else if (m.op === 'alias') {
           if(!m.window_id){throw new Error('Explicit window_id required.');}
           const owner=this.registrationRouter.ownerOf(m.id!);
@@ -125,7 +148,7 @@ export class MCPServer {
           const owner = this.registrationRouter.ownerOf(m.id!);
           if (owner !== m.window_id)
             {throw new Error('The shell belongs to another window.');}
-          await this.registrationRouter.close(m.id!);
+          await this.registrationRouter.close(m.id!,true);
           result = { closed: m.id };
         } else {throw new Error('Unsupported action');}
         res.status(200).json({ result });
@@ -219,12 +242,12 @@ export class MCPServer {
     });
   }
 
-  private registerTools(mcp: McpServer): void {
+  private registerTools(mcp: McpServer, requestSignal?: AbortSignal): void {
     if (this.config.file || this.config.edit) {
-      registerScopedFileTools(mcp, this.shells);
+      registerScopedFileTools(mcp, this.shells, this.config);
     }
     if (this.config.shell) {
-      registerShellTools(mcp, this.shells);
+      registerShellTools(mcp, this.shells, requestSignal);
     }
     registerNativeTools(mcp,this.shells);
   }
@@ -232,7 +255,7 @@ export class MCPServer {
   private async handle(req: Request, res: Response): Promise<void> {
     const mcp = new McpServer({
       name: 'multi-shell-mcp-server',
-      version: '0.10.0'
+      version: (require('../package.json') as {version:string}).version
     });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined
@@ -253,6 +276,10 @@ export class MCPServer {
       } catch {}
     };
     this.sessions.add(session);
+    const requestAbort = new AbortController();
+    res.once('close', () => {
+      if (!res.writableEnded) {requestAbort.abort();}
+    });
     res.once('finish', () => {
       void cleanup();
     });
@@ -260,7 +287,7 @@ export class MCPServer {
       void cleanup();
     });
     try {
-      this.registerTools(mcp);
+      this.registerTools(mcp, requestAbort.signal);
       await mcp.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
@@ -278,16 +305,36 @@ export class MCPServer {
     }
   }
 
+  /** True only while the local HTTP listener can accept connections. */
+  public isHealthy(): boolean {
+    return this.healthy && Boolean(this.httpServer?.listening);
+  }
+
   public async start(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const listener = this.app.listen(this.port, this.host);
       this.httpServer = listener;
+      // Node.js error events without a permanent listener can terminate the
+      // extension host. Keep this handler for the entire server lifetime.
+      listener.on('error', error => {
+        this.healthy = false;
+        logger.error('MultiShell MCP listener error: ' + String(error));
+      });
+      listener.on('close', () => {
+        this.healthy = false;
+        if (this.httpServer === listener) {
+          logger.warn('MultiShell MCP HTTP listener closed.');
+        }
+      });
       const started = () => {
         listener.off('error', failed);
+        this.healthy = true;
         resolve();
       };
       const failed = (error: Error) => {
         listener.off('listening', started);
+        this.healthy = false;
+        if (this.httpServer === listener) {this.httpServer = undefined;}
         reject(error);
       };
       listener.once('listening', started);
@@ -299,6 +346,7 @@ export class MCPServer {
   public async stop(): Promise<void> {
     const http = this.httpServer;
     this.httpServer = undefined;
+    this.healthy = false;
     if (http) {
       const closing = new Promise<void>(resolve => http.close(() => resolve()));
       const timer = setTimeout(() => {

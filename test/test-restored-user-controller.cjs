@@ -45,7 +45,12 @@ async function main(){
  vscode.window.terminals=[mainTerminal,oldUser];
  const originalCount=created;
  const token='5'.repeat(64),createHub=async()=>({stop:async()=>{}});
- const c=new MultiWindowController(0,token,workspace,createHub,()=>{},'mainalias',primary,[]);
+ const untracked=new ShellManager();
+ assert.deepEqual(untracked.restoreUserTerminals(workspace,[]),[],
+   'Untracked MCP terminals must not be promoted to USER on reload');
+ untracked.dispose(true);
+ const c=new MultiWindowController(0,token,workspace,createHub,()=>{},'mainalias',primary,
+   [{shell_id:'gay',initial_cwd:workspace}]);
  try{
   await c.start();
   let state=await c.panelState();
@@ -74,7 +79,7 @@ async function main(){
    assert.equal(created,originalCount,'a second startup must reattach, not duplicate');
    assert.equal(state.shells.find(s=>s.shell_id==='gay').recovery_required,true);
   }finally{await c2.stop(true);}
-  console.log('PASS: controller registers orphaned user shell, requires idle confirmation, reconnects alias across second reload without creating duplicates');
+  console.log('PASS: controller restores only persisted USER sessions, requires idle confirmation and reconnects aliases without duplication');
  }finally{
   await c.stop(true);
   fs.rmSync(root,{recursive:true,force:true});

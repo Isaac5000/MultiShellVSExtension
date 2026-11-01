@@ -42,7 +42,7 @@ const expectError=(promise,re)=>assert.rejects(promise,re);
 
 async function main(){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'user-shell-timeout-'));
- const dirs=['user','bot','automatic','userQueued'].map(x=>path.join(root,x));
+ const dirs=['user','bot','automatic','userQueued','main'].map(x=>path.join(root,x));
  dirs.forEach(x=>fs.mkdirSync(x));
  const m=new ShellManager();
  try{
@@ -50,6 +50,7 @@ async function main(){
   assert.equal(m.create('assistant',dirs[1]).origin,'mcp');
   assert.equal(m.create('primary',dirs[2],false,'automatic').origin,'automatic');
   assert.equal(m.create('manual_queue',dirs[3],false,'user').origin,'user');
+  assert.equal(m.create('main-audit-12345678',dirs[4],false,'automatic').origin,'automatic');
   delays.set('user_stuck',1400);
   const userCommand=m.execute('manual','user_stuck',1000);
   await expectError(userCommand,/timed out.*preserved/i);
@@ -92,10 +93,24 @@ async function main(){
    assert.equal(terminals.get('MCP ['+id+']').disposed,true,origin+' terminal must be disposed');
    assert.equal(m.list().some(s=>s.shell_id===id),false,origin+' terminal must be removed');
   }
+  // Primary auto-managed shells must not be destroyed on timeout.
+  delays.set('slow_main',1400);
+  const primaryId='main-audit-12345678';
+  const primaryTimeout=m.execute(primaryId,'slow_main',1000);
+  await expectError(primaryTimeout,/timed out.*preserved/i);
+  assert.equal(m.list().find(s=>s.shell_id===primaryId).timed_out_running,true);
+  assert.equal(terminals.get('MCP ['+primaryId+']').disposed,false);
+  await expectError(m.execute(primaryId,'must_not_overlap_main',1000),/still running after its timeout/i);
+  await wait(460);
+  assert.equal(m.list().find(s=>s.shell_id===primaryId).timed_out_running,false);
+  assert.equal((await m.execute(primaryId,'main_recovered',1100)).exit_code,0);
+  assert.equal(terminals.get('MCP ['+primaryId+']').disposed,false);
+  assert.deepEqual(commands.filter(x=>x.name==='MCP ['+primaryId+']').map(x=>x.command),
+    ['slow_main','main_recovered'],'Primary must resume without duplicate command execution');
   // Closing a user terminal intentionally still closes it, even when it was previously protected.
   m.close('manual');
   assert.equal(terminals.get('MCP [manual]').disposed,true);
-  console.log('PASS: user panel shell survives MCP timeout, blocks overlap, resumes when command finishes; queued calls cancelled on timeout; MCP and automatic shells close on timeout');
+  console.log('PASS: primary and user shells survive timeout and resume without overlap; temporary MCP/automatic shells close');
  }finally{
   m.dispose();
   fs.rmSync(root,{recursive:true,force:true});

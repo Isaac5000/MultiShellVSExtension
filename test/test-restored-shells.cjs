@@ -34,7 +34,7 @@ const workspaceSlug=(path.basename(project)||'window').replace(/[^A-Za-z0-9_-]/g
 const a='main-'+workspaceSlug+'-638b8ab0';
 const b='main-'+workspaceSlug+'-525df2e3';
 const c='main-'+workspaceSlug+'-3e727b22';
-const make=id=>({name:'MCP ['+id+']',disposed:false,dispose(){this.disposed=true;events.push('disposed:'+this.name);},show(){}});
+const make=id=>({creationOptions:{cwd:project},name:'MCP ['+id+']',disposed:false,dispose(){this.disposed=true;events.push('disposed:'+this.name);},show(){}});
 const first=make(a),second=make(b),third=make(c),ordinary=make('powershell');
 first.shellIntegration={executeCommand(command){
  const execution={async *read(){
@@ -50,16 +50,17 @@ async function main(){
   vscode.window.terminals=[ordinary,first,wrong,second,third];
   const manager=new ShellManager();
   assert.equal(manager.restoreMainTerminals(project),a,'Original terminal should be preferred when no ID persisted');
-  assert.deepEqual(manager.list().map(x=>x.shell_id),[a,b,c]);
+  assert.deepEqual(manager.list().map(x=>x.shell_id),[a], 'Only the elected main is managed');
   assert.equal(events.length,0,'No duplicate terminal should be created during recovery');
-  assert.equal(manager.root(b),fs.realpathSync(project));
+  assert.throws(()=>manager.root(b),/Unknown shell_id/, 'Orphaned physical mains must not be exposed through MCP');
+  assert.equal(manager.list().find(s=>s.shell_id===a).recovery_required,true);
+  await assert.rejects(manager.execute(a,'echo blocked'),/requires confirmation/i);
+  manager.confirmRestoredUserShell(a);
   const restoredResult=await manager.execute(a,'echo recovered');
   assert.equal(restoredResult.exit_code,0);
   assert.equal(restoredResult.output,'restored:echo recovered');
-  assert.equal(manager.restoreMainTerminals(project,c),c,'Saved primary ID should be reused');
   manager.show(a);
-  manager.close(b);
-  assert.equal(second.disposed,true);
+  assert.equal(second.disposed,false,'Orphaned physical terminals are not deleted without ownership evidence');
   assert.equal(first.disposed,false);
   manager.dispose(true);
   assert.equal(first.disposed,false,'Unload must not kill the restored original');
@@ -68,8 +69,14 @@ async function main(){
   vscode.window.terminals=[ordinary,first,third];
   const manager2=new ShellManager();
   assert.equal(await manager2.awaitRestoredMainTerminals(project,a),a);
-  assert.deepEqual(manager2.list().map(s=>s.shell_id),[a,c]);
+  assert.deepEqual(manager2.list().map(s=>s.shell_id),[a], 'A second restore also registers only one primary');
   manager2.dispose(true);
+
+  // A persisted primary ID takes priority over an older orphan.
+  const selectedManager=new ShellManager();
+  assert.equal(selectedManager.restoreMainTerminals(project,c),c);
+  assert.deepEqual(selectedManager.list().map(x=>x.shell_id),[c]);
+  selectedManager.dispose(true);
 
   vscode.window.terminals=[ordinary];
   const manager3=new ShellManager();
@@ -84,7 +91,7 @@ async function main(){
   assert.equal(callbacks.opened.size,0,'Terminal restore event listener must be released');
   assert.equal(ordinary.disposed,false,'Unrelated PowerShell must remain untouched');
   assert.equal(wrong.disposed,false,'Another project must remain untouched');
-  console.log('PASS: restored original shell, old main shells, persisted identity, late restore, safe detach and unrelated terminal isolation');
+  console.log('PASS: restores one primary only, keeps older physical terminals untouched, honors persisted ID, and handles late restoration');
  }finally{
   fs.rmSync(project,{recursive:true,force:true});
  }

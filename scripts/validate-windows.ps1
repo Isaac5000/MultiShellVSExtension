@@ -24,10 +24,20 @@ try {
         foreach($required in @('extension/dist/extension.js','extension/media/panel.js',
                               'extension/media/panel.css','extension/media/logo.png',
                               'extension/media/multishell.svg',
-                              'extension/docs/instalacion.md',
-                              'extension/docs/uso.md','extension/docs/compatibilidad.md',
-                              'extension/docs/validacion.md')){
+                              'extension/docs/es/instalacion.md',
+                              'extension/docs/es/uso.md',
+                              'extension/docs/es/compatibilidad.md',
+                              'extension/docs/es/validacion.md',
+                              'extension/docs/es/historial.md',
+                              'extension/docs/en/installation.md',
+                              'extension/docs/en/usage.md',
+                              'extension/docs/en/compatibility.md',
+                              'extension/docs/en/validation.md',
+                              'extension/docs/en/changelog.md')){
             if($required -notin $names){throw "Missing VSIX entry: $required"}
+        }
+        if(@($names | Where-Object {$_ -match '^extension/tunnel-client-v' }).Count){
+            throw 'External tunnel client must never be packaged into MultiShell MCP'
         }
         if(@($names | Where-Object {$_ -match '^(extension/node_modules/|extension/out/)' }).Count){
             throw 'Bundled package contains unneeded modules or TypeScript outputs'

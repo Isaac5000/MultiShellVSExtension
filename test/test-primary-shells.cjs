@@ -19,7 +19,15 @@ class LocalManager {
     async execute(id,command){return {shell_id:id,command,output:id+':'+command,exit_code:0,truncated:false};}
     dispose(){this.items.clear();}
 }
-const mod=proxyquire('../out/multi-window.js',{'./shell-manager':{ShellManager:LocalManager}});
+const vscode={env:{language:'en'},window:{
+    showWarningMessage:async(_message,options,accept)=>{
+        assert.equal(options.modal,true,'Panel user-shell actions must require local approval');
+        return accept;
+    }
+}};
+const mod=proxyquire('../out/multi-window.js',{
+    './shell-manager':{ShellManager:LocalManager},vscode
+});
 async function test(){
     const home=fs.mkdtempSync(path.join(os.tmpdir(),'panel-main-'));
     const a=path.join(home,'A'),b=path.join(home,'B'),other=path.join(home,'aux');

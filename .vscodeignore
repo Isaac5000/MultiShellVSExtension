@@ -13,6 +13,7 @@ out/test/**
 tsconfig.json
 eslint.config.mjs
 .gitignore
+.gitattributes
 node_modules/.cache/**
 
 # The runtime is bundled into dist/extension.js. Development/runtime dependencies
@@ -22,3 +23,5 @@ out/**
 
 # Documentation under docs/ is intentionally bundled with the README so its
 # relative links remain valid in both GitHub and the packaged extension.
+# External tunnel distribution is never part of the extension installer.
+tunnel-client-v*/**

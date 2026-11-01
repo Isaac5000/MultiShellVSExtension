@@ -2,5 +2,6 @@
   "multiShell.container": "MultiShell MCP Server",
   "multiShell.sessions": "Terminales",
   "multiShell.toggle": "MultiShell MCP: Iniciar o detener servidor",
-  "multiShell.info": "MultiShell MCP: Mostrar información del servidor"
+  "multiShell.info": "MultiShell MCP: Mostrar información del servidor",
+  "multiShell.interactiveAutoExitDesc": "Salir automáticamente de programas interactivos independientes reconocidos (por ejemplo, less, more o top). Puedes cambiarlo por ventana y por terminal desde el panel MultiShell."
 }
