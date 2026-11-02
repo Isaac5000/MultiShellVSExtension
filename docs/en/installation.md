@@ -2,21 +2,21 @@
 
 [Español](../es/instalacion.md) · [Index](../../README.md)
 
-Current guide for **MultiShell MCP Server 0.10.25**. Requires **Visual Studio Code 1.99 or newer**.
+Current guide for **MultiShell MCP Server 0.10.29**. Requires **Visual Studio Code 1.99 or newer**.
 
 ## Install or update from VSIX
 
-The installer is `multi-shell-mcp-server-0.10.25.vsix`. It is generated in the project root; a Git clone **does not include it**, because generated packages are excluded from the repository.
+The installer is `multi-shell-mcp-server-0.10.29.vsix`. It is generated in the project root; a Git clone **does not include it**, because generated packages are excluded from the repository.
 
 In VS Code, run **Extensions: Install from VSIX...**, select the file, then run **Developer: Reload Window**. Alternatively:
 
 ```powershell
-code --install-extension .\multi-shell-mcp-server-0.10.25.vsix --force
+code --install-extension .\multi-shell-mcp-server-0.10.29.vsix --force
 ```
 
 The command above uses PowerShell path syntax. On Linux, replace `.\` with `./`.
 
-After updating, open the **MultiShell MCP** panel and confirm the server is ON. Preserved terminals may require you to confirm that their previous commands have ended; **never unlock them while a task is still running**.
+After updating, verify the version and ON state. MultiShell automatically checks preserved PowerShell terminals without asking for manual idle confirmation. Failed verification and active processes remain protected.
 
 If ChatGPT still displays the old tool schema, refresh or reconnect the MCP connector to discover `create_user_shell_code`.
 
@@ -31,7 +31,7 @@ npm run lint
 npm run package
 ```
 
-The output is `multi-shell-mcp-server-0.10.25.vsix`. For the complete Windows validation, including a production-dependency audit and installer content checks, run:
+The output is `multi-shell-mcp-server-0.10.29.vsix`. For the complete Windows validation, including a production-dependency audit and installer content checks, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-windows.ps1
@@ -47,7 +47,7 @@ A prebuilt VSIX requires **neither Node.js nor Python** for installation.
 2. Disable other MCP extensions attempting to bind to the same port.
 3. Open **MultiShell MCP** and select **Start** if the server is OFF. The default endpoint is `http://127.0.0.1:3000/mcp`.
 4. Configure or reconnect Tunnel Client and the ChatGPT connector separately. If you change the local port, update the tunnel destination as well.
-5. After **Reload Window**, idle sessions are recovered when verified. Only when prompted, check the previous process has finished before selecting **Re-enable MCP**.
+5. After **Reload Window**, wait for automatic verification. **Check availability** retries without sending terminal commands.
 
 The installer contains **no tunnel profiles, API keys, credentials, or active sessions**. The extension does not add OAuth to the local endpoint; **do not publish that endpoint directly** without an external access-control layer.
 
@@ -61,7 +61,7 @@ After running `npm run package`, create a portable source archive using Python 3
 python scripts/make-portable.py
 ```
 
-On Windows, `py scripts/make-portable.py` is also supported. The archive `MultiShell-MCP-Server-0.10.25-portable.zip` contains the top-level directory `MultiShell-MCP-Server-0.10.25` with source code, tests, scripts, documentation, the VSIX, and a SHA-256 integrity manifest.
+On Windows, `py scripts/make-portable.py` is also supported. The archive `MultiShell-MCP-Server-0.10.29-portable.zip` contains the top-level directory `MultiShell-MCP-Server-0.10.29` with source code, tests, scripts, documentation, the VSIX, and a SHA-256 integrity manifest.
 
 `node_modules`, `out`, `dist`, private configuration, sessions, and tunnel data are excluded. Inspect the archive before sharing it.
 

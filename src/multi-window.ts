@@ -4,7 +4,8 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { createServer, Server as HttpServer, IncomingMessage, ServerResponse } from 'http';
 import { AddressInfo } from 'net';
 import { ShellManager, ShellDescription, ShellExecutionResult, ShellOrigin, SavedUserShell, SavedIdleProof } from './shell-manager';
-import { ShellApi } from './shell-api';
+import { ShellApi, ShellRequestOptions } from './shell-api';
+import { HTTP_RECEIVE_LIMITS } from './http-limits';
 import type { NativeKind, NativeArgs } from './tools/native-window-tools';
 
 const HOST = '127.0.0.1';
@@ -23,7 +24,7 @@ export interface UserShellRequest {
     created_at:number;
     expires_at:number;
 }
-interface WorkerState extends Registration { lastSeen:number; }
+interface WorkerState extends Registration { lastSeen:number; generation:number; }
 interface Assignment { owner:string; cwd:string; }
 /** Case-insensitive aliases address one shell per operation; never a conversation-global default. */
 const ALIAS=/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
@@ -51,7 +52,8 @@ export function getSecret(storage:string):string {
 }
 export function authenticated(given:unknown,secret:string):boolean {
     if(typeof given!=='string'||given.length!==secret.length){return false;}
-    return timingSafeEqual(Buffer.from(given),Buffer.from(secret));
+    const presented=Buffer.from(given),expected=Buffer.from(secret);
+    return presented.length===expected.length&&timingSafeEqual(presented,expected);
 }
 async function body(req:IncomingMessage):Promise<any> {
     const chunks:Buffer[]=[];let total=0;
@@ -63,7 +65,7 @@ async function body(req:IncomingMessage):Promise<any> {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 function reply(res:ServerResponse,code:number,value:unknown):void {
-    if(res.writableEnded){return;}
+    if(res.writableEnded||res.destroyed){return;}
     res.writeHead(code,{'content-type':'application/json','cache-control':'no-store'});
     res.end(JSON.stringify(value));
 }
@@ -92,6 +94,9 @@ export class WindowWorker {
     readonly workspace:string;
     private server?:HttpServer;
     private listenerPort=0;
+    private starting?:Promise<void>;
+    private stopping?:Promise<void>;
+    private readonly requests=new Set<AbortController>();
     private readonly pendingRequests=new Map<string,{
         details:UserShellRequest;settle:(approved:boolean)=>void;
     }>();
@@ -177,16 +182,29 @@ export class WindowWorker {
     get port():number{return this.listenerPort;}
     isHealthy():boolean{return Boolean(this.server?.listening);}
     async start():Promise<void>{
+        if(this.stopping){await this.stopping;}
         if(this.isHealthy()){return;}
+        if(this.starting){return this.starting;}
+        const work=this.startListener();this.starting=work;
+        try{await work;}finally{if(this.starting===work){this.starting=undefined;}}
+    }
+    private async startListener():Promise<void>{
         this.server=undefined;
         this.listenerPort=0;
-        const server=createServer(async (req,res)=>{
+        const server=createServer(HTTP_RECEIVE_LIMITS,async (req,res)=>{
             if(req.method!=='POST'||req.url!==ACTION_PATH){reply(res,404,{error:'Not found'});return;}
             if(!authenticated(req.headers['x-multishell-token'],this.secret)){reply(res,403,{error:'Unauthorized'});return;}
             const cancel=new AbortController();
-            res.once('close',()=>{if(!res.writableEnded){cancel.abort();}});
+            this.requests.add(cancel);
+            let responseFinished=false;
+            res.once('finish',()=>{responseFinished=true;this.requests.delete(cancel);});
+            res.once('close',()=>{
+                if(!responseFinished){cancel.abort();}
+                this.requests.delete(cancel);
+            });
             try{
                 const r=await body(req) as WorkerAction;
+                if(cancel.signal.aborted){throw new Error('Window request cancelled before execution.');}
                 let result:unknown;
                 switch(r.op){
                     case 'create':
@@ -320,14 +338,22 @@ export class WindowWorker {
         this.listenerPort=(server.address() as AddressInfo).port;
     }
     async stop():Promise<void>{
+        if(this.stopping){return this.stopping;}
+        const work=this.stopListener();this.stopping=work;
+        try{await work;}finally{if(this.stopping===work){this.stopping=undefined;}}
+    }
+    private async stopListener():Promise<void>{
+        await this.starting?.catch(()=>{});
+        for(const request of this.requests){request.abort();}
         this.panelPermits.clear();
         for(const request of [...this.pendingRequests.values()]){
             request.settle(false);
         }
         const s=this.server;this.server=undefined;this.listenerPort=0;
         if(s?.listening){
+            const closing=new Promise<void>(resolve=>s.close(()=>resolve()));
             s.closeAllConnections?.();
-            await new Promise<void>(resolve=>s.close(()=>resolve()));
+            await closing;
         }
     }
 }
@@ -342,6 +368,7 @@ export class WindowRouter implements ShellApi {
     private readonly pendingAliasShells=new Set<string>();
     private reconciliationWork:Promise<void>=Promise.resolve();
     private readonly unreachableWorkers=new Set<string>();
+    private nextGeneration=0;
     constructor(readonly secret:string) {}
     register(r:Registration):void {
         if(!/^[a-zA-Z0-9_-]{2,80}$/.test(r.window_id) || !Number.isInteger(r.worker_port) ||
@@ -350,10 +377,12 @@ export class WindowRouter implements ShellApi {
             throw new Error('Invalid window registration');
         }
         const previous=this.workers.get(r.window_id);
-        if(previous && previous.worker_port!==r.worker_port){
+        const sameConnection=previous?.worker_port===r.worker_port&&previous.workspace===r.workspace;
+        if(previous && !sameConnection){
             for(const [id,s] of this.assigned){if(s.owner===r.window_id){this.removeAssignment(id);}}
         }
-        this.workers.set(r.window_id,{...r,lastSeen:Date.now()});
+        this.workers.set(r.window_id,{...r,lastSeen:Date.now(),
+            generation:sameConnection?previous!.generation:++this.nextGeneration});
         this.unreachableWorkers.delete(r.window_id);
     }
     private prune():void {
@@ -392,16 +421,20 @@ export class WindowRouter implements ShellApi {
         }
         throw new Error('No unique alias available.');
     }
-    async setAlias(id:string,value:string):Promise<{shell_id:string;alias:string}> {
+    async setAlias(id:string,value:string,options:ShellRequestOptions={}):Promise<{shell_id:string;alias:string}> {
         const shell=this.resolve(id);
         const alias=normalizeAlias(value);
         if(this.pendingAliasShells.has(shell)){throw new Error('Alias change already in progress for shell: '+shell);}
         if(!this.available(alias,shell)){throw new Error('Alias already in use: '+alias);}
         const owner=this.assigned.get(shell)!.owner;
+        const connection=this.getWorker(owner);
         this.reservedAliases.add(alias);
         this.pendingAliasShells.add(shell);
         try{
-            await this.send(owner,{op:'alias',id:shell,alias});
+            await this.send(owner,{op:'alias',id:shell,alias},options.signal);
+            this.requireConnection(connection);
+            if(options.signal?.aborted){throw new Error('Alias change cancelled.');}
+            if(this.assigned.get(shell)?.owner!==owner){throw new Error('Shell ownership changed during alias update; reconnect.');}
             const previous=this.shellAliases.get(shell);
             if(previous){this.aliases.delete(previous);}
             this.shellAliases.set(shell,alias);
@@ -424,16 +457,27 @@ export class WindowRouter implements ShellApi {
         }
         return w;
     }
+    private currentConnection(connection:WorkerState):boolean {
+        return this.workers.get(connection.window_id)?.generation===connection.generation;
+    }
+    private requireConnection(connection:WorkerState):void {
+        this.prune();
+        if(!this.currentConnection(connection)){
+            throw new Error('Window connection changed during the operation; reconnect before retrying.');
+        }
+    }
     private async send(windowId:string,r:WorkerAction,signal?:AbortSignal):Promise<any> {
         const w=this.getWorker(windowId,r.op==='list');
         const response=await post(w.worker_port,ACTION_PATH,this.secret,r,
+            r.op==='list'?2000:
             (r.op==='execute'||r.op==='execute_isolated')? Math.min((r.timeout||120000)+30_000,3_700_000):
             (r.op==='create_user'||r.op==='create_panel_user'||r.op==='close_user'||r.op==='close_panel_user')?120_000:10_000,signal);
         return response.result;
     }
     /** General MCP creation is always temporary. Persistent user shells require local confirmation. */
     async create(id:string,cwd?:string,allowSharedDirectory=false,windowId?:string,origin:ShellOrigin='mcp',
-        approval?:'panel'|'modal',signal?:AbortSignal,panelPermit?:string):Promise<ShellDescription> {
+        options:ShellRequestOptions&{approval?:'panel'|'modal';panelPermit?:string}={}):Promise<ShellDescription> {
+        const {approval,signal,panelPermit}=options;
         if(origin==='user' && !approval){throw new Error('User terminals require explicit VSCode approval.');}
         if(origin==='automatic'){throw new Error('Automatic primary terminals cannot be created via MCP.');}
         if(!/^[A-Za-z][A-Za-z0-9_-]{1,39}$/.test(id)){throw new Error('Invalid shell_id');}
@@ -462,9 +506,10 @@ export class WindowRouter implements ShellApi {
                 // The worker may have completed a TEMP creation while the
                 // upstream connection disappeared. Reconcile this exact ID
                 // without touching persistent user terminals.
-                if(signal?.aborted&&origin==='mcp'){
+                if(signal?.aborted&&origin==='mcp'&&this.currentConnection(worker)){
                     try{
                         const live=await this.send(selected,{op:'list'}) as ShellDescription[];
+                        this.requireConnection(worker);
                         if(live.some(item=>item.shell_id===id&&item.origin==='mcp'&&
                             (process.platform==='win32'?item.initial_cwd.toLowerCase()===directory.toLowerCase():
                                 item.initial_cwd===directory))){
@@ -476,6 +521,7 @@ export class WindowRouter implements ShellApi {
             }
             // The caller may have disconnected while the worker finished a
             // creation. Never publish or return a cancelled temporary shell.
+            this.requireConnection(worker);
             if(signal?.aborted){
                 if(origin==='mcp'){
                     try{await this.send(selected,{op:'close',id});}catch{}
@@ -483,8 +529,19 @@ export class WindowRouter implements ShellApi {
                 throw new Error('Shell creation cancelled after worker completion.');
             }
             this.assigned.set(id,{owner:selected,cwd:shell.initial_cwd});
-            try{await this.setAlias(id,this.uniqueAlias(id,id));}
-            catch(e){this.removeAssignment(id);try{await this.send(selected,{op:origin==='user'?'close_panel_user':'close',id});}catch{}throw e;}
+            try{
+                await this.setAlias(id,this.uniqueAlias(id,id),{signal});
+                this.requireConnection(worker);
+                if(signal?.aborted){throw new Error('Shell creation cancelled after alias update.');}
+            }catch(error){
+                // Compensation belongs to the original connection only. Never
+                // close a replacement terminal that reused this ID on reconnect.
+                if(this.currentConnection(worker)&&this.assigned.get(id)?.owner===selected){
+                    this.removeAssignment(id);
+                    try{await this.send(selected,{op:origin==='user'?'close_panel_user':'close',id});}catch{}
+                }
+                throw error;
+            }
             return {...shell,alias:this.shellAliases.get(id),window_id:selected} as ShellDescription;
         } finally {
             this.pending.delete(id);
@@ -492,21 +549,23 @@ export class WindowRouter implements ShellApi {
     }
     /** The AI may request, but never grant, creation of a persistent user terminal. */
     createUserWithApproval(id:string,cwd?:string,allowSharedDirectory=false,windowId?:string,signal?:AbortSignal):Promise<ShellDescription>{
-        return this.create(id,cwd,allowSharedDirectory,windowId,'user','modal',signal);
+        return this.create(id,cwd,allowSharedDirectory,windowId,'user',{approval:'modal',signal});
     }
     /** Trusted local VSCode panel action: user clicked Create in this window. */
     createPanelUser(id:string,cwd?:string,allowSharedDirectory=false,windowId?:string,panelPermit?:string):Promise<ShellDescription>{
-        return this.create(id,cwd,allowSharedDirectory,windowId,'user','panel',undefined,panelPermit);
+        return this.create(id,cwd,allowSharedDirectory,windowId,'user',{approval:'panel',panelPermit});
     }
     async list():Promise<ShellDescription[]> {
         this.prune();
-        const results=await Promise.all([...this.workers].map(async ([id])=>{
+        const results=await Promise.all([...this.workers.values()].map(async connection=>{
+            const id=connection.window_id;
             try{
                 const found=await this.send(id,{op:'list'}) as ShellDescription[];
+                if(!this.currentConnection(connection)){return [];}
                 this.unreachableWorkers.delete(id);
                 return found.filter(x=>this.assigned.get(x.shell_id)?.owner===id).map(x=>({...x,alias:this.shellAliases.get(x.shell_id),window_id:id}));
             }catch{
-                this.unreachableWorkers.add(id);
+                if(this.currentConnection(connection)){this.unreachableWorkers.add(id);}
                 return [];
             }
         }));
@@ -539,20 +598,31 @@ export class WindowRouter implements ShellApi {
         const owner=this.assigned.get(shell)!.owner;
         return this.send(owner,{op:'native',id:shell,kind,args});
     }
-    async close(id:string,fromPanel=false):Promise<void>{
+    async close(id:string,options:(ShellRequestOptions&{fromPanel?:boolean})|boolean={}):Promise<void>{
+        const {signal,fromPanel}=typeof options==='boolean'?{fromPanel:options}:options;
         const a=this.assigned.get(this.resolve(id));
         if(!a){throw new Error('Unknown shell_id: '+id);}
         const shell=this.resolve(id);
+        const connection=this.getWorker(a.owner);
         if(shell.startsWith('main-')){throw new Error('The main shell cannot be closed through MCP.');}
         try {
-            const live=await this.send(a.owner,{op:'list'}) as ShellDescription[];
+            const live=await this.send(a.owner,{op:'list'},signal) as ShellDescription[];
+            this.requireConnection(connection);
+            if(this.assigned.get(shell)?.owner!==a.owner){throw new Error('Shell ownership changed before closure; reconnect.');}
             const isUser=live.find(s=>s.shell_id===shell)?.origin==='user';
             const op=isUser?(fromPanel?'close_panel_user':'close_user'):'close';
-            await this.send(a.owner,{op,id:shell});
+            await this.send(a.owner,{op,id:shell},signal);
+            this.requireConnection(connection);
         } catch(e) {
+            if(signal?.aborted||!this.currentConnection(connection)||
+                (this.assigned.has(shell)&&this.assigned.get(shell)?.owner!==a.owner)){throw e;}
             // If VSCode closed the shell itself, discard its stale router assignment.
-            const live=await this.send(a.owner,{op:'list'}) as ShellDescription[];
+            const live=await this.send(a.owner,{op:'list'},signal) as ShellDescription[];
+            this.requireConnection(connection);
             if(live.some(s=>s.shell_id===shell)){throw e;}
+        }
+        if(this.assigned.has(shell)&&this.assigned.get(shell)?.owner!==a.owner){
+            throw new Error('Shell ownership changed during closure; reconnect.');
         }
         this.removeAssignment(shell);
     }
@@ -567,7 +637,14 @@ export class WindowRouter implements ShellApi {
         finally{release();}
     }
     private async reconcileLocked(windowId:string):Promise<void> {
+        const connection=this.getWorker(windowId,true);
+        const requireSameConnection=()=>{
+            if(this.workers.get(windowId)?.generation!==connection.generation){
+                throw new Error('Window connection changed during reconciliation; retry after reconnect.');
+            }
+        };
         const shells=await this.send(windowId,{op:'list'}) as ShellDescription[];
+        requireSameConnection();
         const live=new Set<string>();
         for(const shell of shells){
             if(!/^[A-Za-z][A-Za-z0-9_-]{1,39}$/.test(shell.shell_id) ||
@@ -655,9 +732,11 @@ export class WindowRouter implements ShellApi {
         const applied:typeof planned=[];
         try{
             for(const change of planned){
+                requireSameConnection();
                 await this.send(windowId,{op:'alias',id:change.id,alias:change.alias});
                 applied.push(change);
             }
+            requireSameConnection();
             // Nothing is published in the router until all worker saves succeed.
             for(const id of obsolete){this.removeAssignment(id);}
             for(const shell of shells){
@@ -672,7 +751,8 @@ export class WindowRouter implements ShellApi {
         }catch(error){
             const rollbackErrors:string[]=[];
             for(const change of applied.reverse()){
-                try{await this.send(windowId,{op:'alias',id:change.id,alias:change.previous});}
+                try{await post(connection.worker_port,ACTION_PATH,this.secret,
+                    {op:'alias',id:change.id,alias:change.previous});}
                 catch(rollbackError){rollbackErrors.push(change.id+': '+String(rollbackError));}
             }
             if(rollbackErrors.length){
@@ -729,12 +809,29 @@ export class MultiWindowController {
         }
         return {window_id:this.worker.id,workspace:this.worker.workspace,worker_port:this.worker.port,aliases:Object.fromEntries(this.worker.aliases)};
     }
-    private async register():Promise<void>{
-        if(this.leader){
-            this.router.register(this.registration());
-            await this.router.reconcile(this.worker.id);
-        } else {
-            await post(this.port,REGISTER_PATH,this.token,this.registration());
+    private async register(recoverRestored=false):Promise<void>{
+        const deadline=Date.now()+15_000;
+        for(;;){
+            if(this.stopped){throw new Error('MultiShell controller stopped during registration.');}
+            try{
+                if(this.leader){
+                    this.router.register(this.registration());
+                    await this.router.reconcile(this.worker.id);
+                } else {
+                    await post(this.port,REGISTER_PATH,this.token,this.registration());
+                }
+                return;
+            }catch(error){
+                // Reload preserves terminal IDs but changes the worker ID. The
+                // live coordinator may still hold the old worker's 12s lease.
+                // Retry metadata only; never take ownership from a live window,
+                // infer shell idleness, or replay a command after connection loss.
+                if(!recoverRestored||this.primaryShellId!==this.preferredPrimaryId||
+                    !(error instanceof Error)||
+                    !error.message.startsWith('Conflicting shell ID across VSCode windows:')||
+                    this.stopped||Date.now()>=deadline){throw error;}
+                await new Promise<void>(resolve=>setTimeout(resolve,500));
+            }
         }
     }
     async start():Promise<void>{
@@ -774,7 +871,7 @@ export class MultiWindowController {
             this.leader=hub;this.role='hub';
             try{
                 if(this.stopped){throw new Error('MultiShell controller already stopped.');}
-                await this.register();
+                await this.register(true);
                 if(this.stopped){throw new Error('MultiShell controller stopped during registration.');}
                 this.status('hub',this.worker.id);
             }catch(error){
@@ -785,7 +882,7 @@ export class MultiWindowController {
         } catch (e) {
             if((e as NodeJS.ErrnoException).code!=='EADDRINUSE'){throw e;}
             // Register only with a compatible authenticated MultiShell MCP hub.
-            await this.register();
+            await this.register(true);
             this.role='worker';this.status('worker',this.worker.id);
         }
     }
@@ -933,9 +1030,12 @@ export class MultiWindowController {
         if(!this.localShells.list().some(s=>s.shell_id===id)){
             throw new Error('Restored terminal does not belong to this window.');
         }
-        // Confirmation is restricted to the owning window and never delegated to
-        // an arbitrary MCP client through a public shell tool.
-        return this.localShells.confirmRestoredUserShell(id);
+        await this.localShells.resumeProvenIdleTerminals();
+        const shell=this.localShells.list().find(s=>s.shell_id===id);
+        if(!shell||shell.recovery_required||shell.timed_out_running||shell.busy){
+            throw new Error('Terminal is still active or automatic idle verification is unavailable. No input was sent.');
+        }
+        return shell;
     }
     public panelShowShell(id:string):void {
         this.localShells.show(id);

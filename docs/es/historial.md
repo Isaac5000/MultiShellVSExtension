@@ -2,6 +2,44 @@
 
 [English version](../en/changelog.md) · [Índice del proyecto](../../README.md)
 
+## 0.10.29 — Cancelación y respuestas tardías
+
+- La creación temporal, el cierre y los cambios de alias reciben la cancelación del cliente. Una petición desconectada no puede crear posteriormente una terminal ni cerrar una sesión de usuario tras una aprobación tardía.
+- Las respuestas de creación, cierre, alias y descubrimiento se validan contra la conexión que las originó. Una respuesta anterior no puede modificar ni cerrar una terminal que reutilice el ID después de reconectar, borrar su registro o marcar la ventana nueva como desconectada.
+- Reiniciar el gestor libera sus peticiones y escuchadores pendientes, incluso si falta la integración de shell o un evento de finalización. Conservar terminales no conserva las esperas del gestor anterior ni interrumpe sus procesos.
+- La compensación de una creación fallida se limita a su conexión original. Se mantienen las autorizaciones locales y no se repiten automáticamente operaciones ya enviadas.
+- Añadidas tres suites de regresión para cancelación de mutaciones, respuestas obsoletas y liberación del gestor.
+
+## 0.10.28 — Conexión, reconexión y recarga resistentes
+
+- Corregido el arranque al restaurar terminales mientras el coordinador conserva el registro anterior: se reintenta únicamente el registro durante un plazo limitado, sin apropiarse de sesiones activas ni repetir órdenes.
+- Los inicios y cierres simultáneos comparten una sola operación; los eventos tardíos de un servidor anterior no invalidan su sustituto.
+- La desconexión y el cierre del servidor cancelan las órdenes pendientes. Se conservan los procesos principales y de usuario ya iniciados.
+- La reconciliación rechaza respuestas de conexiones antiguas; una ventana que no responde limita su consulta de descubrimiento a dos segundos.
+- Las cabeceras incompletas caducan en diez segundos y los cuerpos en quince, con un intervalo de comprobación de un segundo. Estos límites de recepción no recortan las respuestas de órdenes largas o silenciosas.
+- Los tokens malformados no provocan excepciones; el JSON inválido y los cuerpos excesivos reciben errores limitados, sin páginas HTML con trazas internas.
+- Nuevas pruebas de protocolo con el cliente MCP oficial, reinicios, desconexiones, cancelación, carga sostenida y ventanas reales de VS Code. Consulta [Validación](validacion.md) para resultados y límites.
+
+## 0.10.27 — Recuperación automática y envío seguro
+
+- PowerShell se verifica mediante un runspace de diagnóstico separado; las terminales libres se recuperan automáticamente, incluso tras perder un evento de fin. No se envían teclas ni se ejecutan sondeos en el runspace de la terminal.
+- La inspección distingue procesos silenciosos y esperas de entrada; la actividad nueva invalida un resultado anterior. Los fallos de inspección mantienen la protección.
+- Corregidos el registro obsoleto tras recuperación, la cancelación durante la espera de integración, el envío sobre actividad manual y la contaminación de estado por lectores antiguos.
+- El botón de recuperación repite una verificación automática sin pedir confirmación manual.
+- Actualizados ESLint y minimatch; la auditoría completa de npm no detecta vulnerabilidades conocidas.
+- Nuevas suites para regresiones de recuperación y consultas reales de PowerShell. **57/57 suites**, ESLint, auditoría completa de npm y **12/12 comprobaciones en VS Code 1.144.0 con PowerShell 7** superadas. Recarga real de ventanas y Linux pendientes.
+
+## 0.10.26 — Diagnóstico de terminales aparentemente bloqueadas
+
+- El panel y las respuestas MCP distinguen terminales ocupadas por comandos de MCP de terminales con actividad externa detectada por VS Code (`external_busy`).
+- Las sesiones que precisan verificación incluyen `recovery_reason`: `restored_unverified` (restaurada sin prueba de inactividad), `ambiguous_completion` (finalización sin confirmación fiable) o `unverified_execution` (estado de ejecución incierto).
+- Corregido el diagnóstico engañoso de terminal aparentemente disponible cuando existe un comando manual observado, y ahora se refleja inmediatamente una finalización ambigua.
+- Se mantiene la confirmación manual únicamente cuando falta evidencia fiable; no se envían pulsaciones de teclado, comandos de sondeo ni señales.
+- Los comandos incompletos muestran ahora fases diferenciadas: esperando integración de shell, en ejecución, salida finalizada sin evento de fin, error de lectura pendiente de confirmación o proceso conservado tras timeout.
+- Detección pasiva de posibles paginadores, confirmaciones y credenciales sin responderlos automáticamente; avisos de silencio prolongado, que no implican necesariamente bloqueo.
+- Corregida una carrera de finalización: si VS Code emite el evento de fin antes de que `executeCommand()` devuelva la identidad de ejecución, se conserva y se asocia al comando correcto.
+- Nuevas pruebas para prompts, esperas de finalización, cola FIFO y finalización temprana. **Pendiente de validación automatizada y empaquetado** por indisponibilidad de una terminal de compilación confirmada libre.
+
 ## 0.10.25 — Ejecución aislada y protección frente a paginadores
 
 - Nueva herramienta MCP `execute_isolated_command_code` para comandos no interactivos en un subproceso independiente de la terminal integrada. Usa el directorio de la sesión indicada, incluso si esa terminal está ocupada o protegida por timeout.

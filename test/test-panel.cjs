@@ -185,9 +185,12 @@ async function main() {
   await wait(25);
   assert.ok(calls.some(x=>x[0]==='request'&&x[1]==='abc123'&&x[2]===false));
   assert.equal(sent.findLast(m=>m.type==='state').snapshot.requests.length,0);
+  const promptsBeforeRecovery=calls.filter(x=>x[0]==='confirmPrompt').length;
   handler({type:'confirm_restore',id:'old_user'});
   await wait(30);
   assert.ok(calls.some(x=>x[0]==='confirmRestored'&&x[1]==='old_user'));
+  assert.equal(calls.filter(x=>x[0]==='confirmPrompt').length,promptsBeforeRecovery,
+    'Recovery verifies readiness automatically without asking the user to assert idle');
   handler({type:'port',value:4217});
   await wait(30);
   assert.equal(port,4217);

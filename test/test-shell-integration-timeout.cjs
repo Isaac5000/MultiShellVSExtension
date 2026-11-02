@@ -26,7 +26,10 @@ const {ShellManager}=proxyquire('../out/shell-manager.js',{vscode});
  try{
   const id='main-integration-12345678';
   manager.create(id,dir,true,'automatic');
-  await assert.rejects(manager.execute(id,'not_executed',1000),/Shell integration unavailable.*Command was not started/i);
+  const pending=manager.execute(id,'not_executed',1000);
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(manager.list().find(s=>s.shell_id===id).execution_phase,'waiting_for_integration');
+  await assert.rejects(pending,/Shell integration unavailable.*Command was not started/i);
   const state=manager.list().find(s=>s.shell_id===id);
   assert.equal(state.busy,false);
   assert.equal(state.timed_out_running,false);

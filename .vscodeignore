@@ -14,6 +14,7 @@ tsconfig.json
 eslint.config.mjs
 .gitignore
 .gitattributes
+AGENTS.md
 node_modules/.cache/**
 
 # The runtime is bundled into dist/extension.js. Development/runtime dependencies

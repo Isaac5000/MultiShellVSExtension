@@ -2,6 +2,44 @@
 
 [Versión en español](../es/historial.md) · [Project index](../../README.md)
 
+## 0.10.29 — Cancellation and late responses
+
+- Temporary creation, closure, and alias changes receive client cancellation. A disconnected request cannot later create a terminal or close a user session after delayed approval.
+- Creation, closure, alias, and discovery responses are checked against their originating connection. An older response cannot change or close a replacement terminal reusing that ID, remove its assignment, or mark the new window offline.
+- Manager restart releases its pending requests and listeners, including missing shell integration or completion events. Preserving terminals does not retain the previous manager's waits or interrupt their processes.
+- Compensation for failed creation is limited to its original connection. Local approvals remain enforced and already dispatched operations are not automatically replayed.
+- Added three regression suites for mutation cancellation, stale responses, and manager disposal.
+
+## 0.10.28 — Resilient connections, reconnection, and reload
+
+- Fixed startup when restored terminal IDs encounter the coordinator's previous registration: only registration metadata retries for a bounded period, without taking sessions from live windows or replaying commands.
+- Concurrent starts and stops share one operation; late events from an old listener cannot invalidate its replacement.
+- Disconnects and server shutdown cancel queued commands. Already started primary and user shell processes are preserved.
+- Reconciliation rejects stale connection responses; discovery of an unresponsive window is limited to two seconds.
+- Incomplete headers expire after ten seconds and bodies after fifteen, with a one-second checking interval. These reception limits do not shorten long or silent command responses.
+- Malformed tokens cannot throw; invalid JSON and oversized bodies return bounded errors without HTML stack traces.
+- Added official MCP client protocol tests, restarts, disconnects, cancellation, sustained load, and real VS Code window checks. See [Validation](validation.md) for results and limits.
+
+## 0.10.27 — Automatic recovery and safe dispatch
+
+- PowerShell readiness is verified through a separate diagnostic runspace; idle terminals recover automatically, including after a lost completion event. No keystrokes or probe pipelines are sent to the terminal's runspace.
+- Inspection distinguishes silent work and input waits; new activity invalidates an older result. Failed inspection retains protection.
+- Fixed stale recovery records, cancellation during integration setup, dispatch over manual work, and stale-reader state contamination.
+- The recovery button repeats automatic verification without manual idle confirmation.
+- Updated ESLint and minimatch; full npm audit reports no known vulnerabilities.
+- Added recovery regressions and real PowerShell inspection suites. **57/57 suites**, ESLint, full npm audit, and **12/12 VS Code 1.144.0 checks with PowerShell 7** passed. Real window reload and Linux checks remain pending.
+
+## 0.10.26 — Diagnostics for apparently blocked terminals
+
+- Shell lists and the panel now distinguish commands managed by MCP from external activity detected by VS Code (`external_busy`).
+- Sessions awaiting verification expose `recovery_reason`: `restored_unverified` (restored without idle proof), `ambiguous_completion` (no reliable completion evidence), or `unverified_execution` (unknown execution state).
+- Fixed misleading "available" status when a manually started command is observed, and promptly expose ambiguous completion status.
+- Manual confirmation remains required only when reliable evidence is missing. No probing commands, keystrokes, or signals are sent.
+- Incomplete commands now expose distinct phases: waiting for shell integration, running, output closed without a completion event, read failure awaiting completion, and process preserved after timeout.
+- Passive hints for possible pagers, confirmations and credential prompts; long-output-silence warnings do not imply a confirmed deadlock.
+- Fixed a completion race: when VS Code emits an end event before `executeCommand()` returns its execution identity, the event is buffered and matched to the correct command.
+- Added regression tests for interactive prompts, pending completion, FIFO protection and early completion events. **Automated validation and VSIX packaging are pending** because no confirmed idle build terminal is available.
+
 ## 0.10.25 — Isolated execution and pager protection
 
 - New `execute_isolated_command_code` MCP tool runs non-interactive commands in a separate OS process using the selected session's working directory, even when its integrated terminal is busy or protected following a timeout.

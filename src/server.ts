@@ -1,5 +1,6 @@
-import express, { Request, Response } from 'express';
-import { Server } from 'http';
+import express, { Request, Response, NextFunction } from 'express';
+import { createServer, Server } from 'http';
+import { HTTP_RECEIVE_LIMITS } from './http-limits';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { ShellApi } from './shell-api';
@@ -32,9 +33,12 @@ export class MCPServer {
   private readonly app = express();
   private httpServer?: Server;
   private healthy = false;
+  private starting?: Promise<void>;
+  private stopping?: Promise<void>;
   private readonly sessions = new Set<{
     transport: StreamableHTTPServerTransport;
     mcp: McpServer;
+    abort: AbortController;
   }>();
 
   constructor(
@@ -240,6 +244,14 @@ export class MCPServer {
     this.app.delete('/mcp', (_, res) => {
       res.status(405).end('Stateless MCP; no persistent session to delete.');
     });
+    this.app.use((error:unknown,req:Request,res:Response,next:NextFunction)=>{
+      if(req.aborted||res.destroyed){return;}
+      if(res.headersSent){next(error);return;}
+      const status=(error as {status?:number})?.status;
+      const code=status===413?413:status===400?400:500;
+      if(code===500){logger.error('MultiShell HTTP request failed: '+String(error));}
+      res.status(code).json({error:code===413?'Request exceeds 2 MB':code===400?'Invalid JSON request':'Internal error'});
+    });
   }
 
   private registerTools(mcp: McpServer, requestSignal?: AbortSignal): void {
@@ -260,7 +272,8 @@ export class MCPServer {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined
     });
-    const session = { mcp, transport };
+    const requestAbort = new AbortController();
+    const session = { mcp, transport, abort: requestAbort };
     let cleaned = false;
     const cleanup = async () => {
       if (cleaned) {
@@ -276,14 +289,15 @@ export class MCPServer {
       } catch {}
     };
     this.sessions.add(session);
-    const requestAbort = new AbortController();
-    res.once('close', () => {
-      if (!res.writableEnded) {requestAbort.abort();}
-    });
+    let responseFinished = false;
     res.once('finish', () => {
+      responseFinished = true;
       void cleanup();
     });
     res.once('close', () => {
+      // SDK stream adapters can mark writableEnded/Finished while aborting,
+      // without emitting finish. Only the actual finish event proves delivery.
+      if (!responseFinished) {requestAbort.abort();}
       void cleanup();
     });
     try {
@@ -311,18 +325,28 @@ export class MCPServer {
   }
 
   public async start(): Promise<void> {
+    if (this.stopping) {await this.stopping;}
+    if (this.isHealthy()) {return;}
+    if (this.starting) {return this.starting;}
+    const work = this.startListener();
+    this.starting = work;
+    try {await work;}
+    finally {if (this.starting === work) {this.starting = undefined;}}
+  }
+
+  private async startListener(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const listener = this.app.listen(this.port, this.host);
+      const listener = createServer(HTTP_RECEIVE_LIMITS, this.app);
       this.httpServer = listener;
       // Node.js error events without a permanent listener can terminate the
       // extension host. Keep this handler for the entire server lifetime.
       listener.on('error', error => {
-        this.healthy = false;
+        if (this.httpServer === listener) {this.healthy = false;}
         logger.error('MultiShell MCP listener error: ' + String(error));
       });
       listener.on('close', () => {
-        this.healthy = false;
         if (this.httpServer === listener) {
+          this.healthy = false;
           logger.warn('MultiShell MCP HTTP listener closed.');
         }
       });
@@ -339,11 +363,22 @@ export class MCPServer {
       };
       listener.once('listening', started);
       listener.once('error', failed);
+      listener.listen(this.port, this.host);
     });
     logger.info('MultiShell MCP listening on ' + this.host + ':' + this.port);
   }
 
   public async stop(): Promise<void> {
+    if (this.stopping) {return this.stopping;}
+    const work = this.stopListener();
+    this.stopping = work;
+    try {await work;}
+    finally {if (this.stopping === work) {this.stopping = undefined;}}
+  }
+
+  private async stopListener(): Promise<void> {
+    await this.starting?.catch(() => {});
+    for (const session of this.sessions) {session.abort.abort();}
     const http = this.httpServer;
     this.httpServer = undefined;
     this.healthy = false;

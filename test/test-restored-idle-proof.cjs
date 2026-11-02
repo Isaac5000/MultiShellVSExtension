@@ -35,7 +35,9 @@ let processId=18000;
 const {ShellManager}=proxyquire('../out/shell-manager.js',{vscode});
 const get=(m,id)=>m.list().find(t=>t.shell_id===id);
 async function main(){
- let m=new ShellManager(),restored;
+ // This suite exercises legacy evidence for shells without a runspace inspector.
+ const legacyManager=()=>new ShellManager(async()=> 'unsupported');
+ let m=legacyManager(),restored;
  try{
   const pm=m.create(mainId,dir,true,'automatic');
   const pu=m.create('remembered',nested,true,'user');
@@ -58,7 +60,7 @@ async function main(){
   assert.ok(stateChangeCount>=2,
     'Shell start/end events must trigger persistence notifications');
   m.dispose(true);
-  restored=new ShellManager();
+  restored=legacyManager();
   restored.setSavedIdleProofs(proof);
   assert.equal(restored.restoreMainTerminals(dir,mainId),mainId);
   assert.equal(restored.restoreUserTerminals(dir,[{shell_id:'remembered',initial_cwd:nested}]).length,1);
@@ -71,7 +73,7 @@ async function main(){
 
   // Stale or invalid idle evidence must not automatically unlock a terminal.
   const oldProof={...proof[mainId],saved_at:Date.now()-300_000};
-  const staleManager=new ShellManager();
+  const staleManager=legacyManager();
   staleManager.setSavedIdleProofs({[mainId]:oldProof});
   staleManager.restoreMainTerminals(dir,mainId);
   assert.deepEqual(await staleManager.resumeProvenIdleTerminals(),[]);

@@ -2,7 +2,7 @@
 
 [Español](../es/compatibilidad.md) · [Index](../../README.md)
 
-MultiShell MCP 0.10.25 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
+MultiShell MCP 0.10.29 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
 
 ## Current tools
 

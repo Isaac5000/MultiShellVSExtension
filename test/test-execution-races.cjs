@@ -120,6 +120,8 @@ async function main(){
    await wait(40);
    assert.equal(issued.some(x=>x.command==='after_stream_failure'),false);
    assert.equal(manager.list().find(x=>x.shell_id==='protected_user').busy,true);
+   assert.equal(manager.list().find(x=>x.shell_id==='protected_user').execution_phase,
+     'output_error_waiting_for_completion','A failed output reader must remain guarded until completion');
    finish('stream_fails');
    await assert.rejects(broken,/stream failed/);
    await issuedCommand('after_stream_failure');
@@ -131,7 +133,7 @@ async function main(){
    emit('started',{terminal:user,execution:external});
    emit('ended',{terminal:user,execution:external,exitCode:undefined});
    await assert.rejects(manager.execute('protected_user','ambiguous',1000),
-     /ambiguous execution state/);
+     /ambiguous execution state|requires confirmation/);
    assert.equal(manager.list().find(x=>x.shell_id==='protected_user').recovery_required,true);
    manager.confirmRestoredUserShell('protected_user');
    const final=manager.execute('protected_user','verified_idle',1000);

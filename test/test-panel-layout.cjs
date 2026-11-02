@@ -50,4 +50,13 @@ assert.ok(css.includes('@media (max-width: 280px)'),'Narrow sidebar CSS missing'
 assert.ok(js.includes("const es = {")&&js.includes("const en = {"),'Both language dictionaries required');
 assert.ok(js.includes('shell.alias') && js.includes("send('alias'"),'Alias editor and short selector missing');
 assert.ok(!js.includes('.innerHTML='),'Untrusted user content must not be inserted as HTML');
+for(const key of ['restoredUnverified','ambiguousCompletion','unverifiedExecution','externalBusy',
+  'integrationPending','completionPending','outputReadFailed','outputDraining',
+  'possiblePager','possibleConfirmation','possibleCredentials','possibleSilentWait']){
+  assert.ok(js.includes(key+':'), 'Missing bilingual recovery diagnostic: '+key);
+}
+assert.ok(js.includes('shell.recovery_reason')&&js.includes('shell.external_busy') &&
+  js.includes('shell.execution_phase')&&js.includes('shell.input_wait_hint')&&
+  js.includes('shell.output_silent_seconds'),
+  'Panel must distinguish uncertain recovery from commands executing outside MCP');
 console.log('PASS: compact multilingual panel, elevated menus, VS Code locale, safe dynamic text, SVG icons and responsive layout');

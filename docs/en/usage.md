@@ -2,7 +2,7 @@
 
 [Español](../es/uso.md) · [Index](../../README.md)
 
-Applies to **MultiShell MCP Server 0.10.25**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
+Applies to **MultiShell MCP Server 0.10.29**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
 
 ## 1. Start the server and select a terminal
 
@@ -58,17 +58,21 @@ The panel can copy either a selector or a ready-to-paste instruction for ChatGPT
 
 ## 5. Timeouts, busy states, and recovery
 
-**Safe automatic recovery:** after restoring a session, MultiShell waits for a definite command-completion event from VS Code shell integration. When such an event arrives (including an exit code, with no other observed execution active), the terminal is unlocked automatically without sending commands or signals. If the shell was already idle before restoration and no completion event can be observed, manual confirmation is still required: VS Code does not expose a reliable "terminal is idle" property for restored processes. Probing with a command is unsafe because the API may send `Ctrl+C` to interrupt an existing process.
+**Read-only diagnostics:** `external_busy`, `recovery_reason`, `execution_phase`, `input_wait_hint`, and `output_silent_seconds` describe activity and waits. No hint or silent interval alone proves a stuck process. Automatic recovery reconciles stale state with PowerShell's actual runspace; it never automatically answers passwords or confirmations.
+
+
+
+**Safe automatic recovery:** completion events and saved evidence are complemented by a separate PowerShell diagnostic runspace. Only an open, available foreground runspace outside a debugger breakpoint is accepted. Silent commands, nested shells, and input waits stay protected. Activity during inspection invalidates its result. No command is submitted to the terminal's foreground runspace.
 
 **User-owned and primary automatic terminals** preserve their processes when a command times out. While the command is still active, MCP rejects new commands for that terminal to prevent overlap. If VS Code reports completion, the terminal becomes available again automatically.
 
-If VS Code misses the completion event, the panel may display **Timed out · process preserved**. Check that the command really finished, or interrupt it yourself, before clicking **Re-enable MCP**. This action **does not terminate a process**: it only authorizes the MCP queue to use the terminal again. Approving too early can cause overlapping commands.
+If VS Code misses a completion event, MultiShell automatically inspects actual readiness and clears stale activity only after confirming idle state. **Check availability** repeats inspection without manual idle confirmation or interrupting a running command.
 
 Temporary MCP terminals use a different timeout policy: they may be closed after timeout to avoid reusing an execution in an unknown state. If shell integration was unavailable and a command never started, a timeout must not destroy the primary terminal.
 
 ### After reloading VS Code
 
-When VS Code preserves the physical terminal instances, MultiShell attempts to reconnect them using stored IDs, directories, and metadata. It must not create duplicate user-owned terminals. Restored terminals are enabled automatically when a verified completion event or saved idle evidence matches the original process and directory. Ambiguous cases still require manual confirmation.
+When VS Code preserves physical terminals, MultiShell reattaches their IDs and directories without creating duplicates. Sessions recover through trusted events, saved evidence, or PowerShell runspace inspection. Still-running processes remain preserved.
 
 Terminals from other projects, duplicate IDs, or conflicting metadata must not be adopted. If VS Code has actually terminated a process, the extension cannot restore that process.
 
@@ -114,14 +118,30 @@ In 0.10.22, after **Reload Window**, MultiShell manages one `main` terminal per 
 The panel follows the VS Code language automatically: Spanish when selected, English for all other languages. There is no manual language dropdown.
 ## Improved automatic recovery in 0.10.22
 
-The extension records idle evidence after execution changes and periodically while running. Following a reload, it checks that the same physical terminal is present (process ID and directory) and no outstanding command is known. When the evidence matches, MCP is re-enabled without interaction; otherwise, manual confirmation remains. **No probing commands or signals are sent.** The recovery button uses a shield icon while automatic exit uses a distinct log-out icon.
+The extension saves idle evidence and automatically checks PowerShell when restoring or retrying protected sessions. The shield button repeats verification; it does not authorize a blind unlock. Unverifiable shells remain protected. Non-interactive work can use `execute_isolated_command_code`, with separate variables and aliases.
 ## Execution and restoration safety (0.10.22)
 
 - Shell-integration execution events prevent MCP from injecting commands while a manually started command is active; no `Ctrl+C` is sent.
 - Cancelling a queued item cannot allow later requests through before earlier executions finish.
-- If output reading fails, the terminal stays reserved until VS Code reports command completion or the user explicitly confirms it is idle.
+- If output reading fails, the terminal remains reserved until a completion event or reliable automatic idle verification.
 - Only user-owned terminals with saved ownership metadata are reattached. A matching name and directory is insufficient to promote a temporary shell to a `user` session; legacy untracked terminals are not adopted.
 - Disconnected creation requests are rolled back when the pending request is identifiable; unrelated active user terminals are not closed.
-## Post-completion output draining (0.10.25)
+## Post-completion output draining (0.10.27)
 
 If VS Code confirms command completion but the output iterator remains open, MultiShell drains it for **750 ms** before releasing the FIFO gate and returning `output_incomplete=true` and `truncated=true`. Without a completion event, the normal timeout and process-preservation protections remain in effect. Real Linux behavior and every Windows PowerShell configuration still require direct validation.
+
+## Connections and reload (0.10.28)
+
+When a window reloads, the coordinator can retain its previous registration for up to 12 seconds. The new instance automatically waits for that registration to expire and reattaches the original terminal. This registration retry is bounded to 15 seconds; a window that remains live retains ownership.
+
+If the connection breaks during a command, the original request can fail while its process continues. Queued commands are cancelled and **already dispatched commands are never automatically replayed**. Check the state and result before resubmitting an operation that changes data. A primary or user shell becomes available again when its process can be verified as idle.
+
+Discovery of an unresponsive window expires after two seconds; other windows remain usable. Incomplete HTTP headers have a ten-second limit and bodies a fifteen-second limit, checked every second. These limits apply to receiving a request, not to legitimate command duration or a silent process.
+
+## Cancelled operations and reconnection (0.10.29)
+
+Request cancellation also reaches temporary creation, closure, and alias changes. Pending operations check cancellation before applying; a closure approval received after disconnect cannot close the user terminal. Local approvals remain mandatory.
+
+After reconnection, a response from the previous connection is discarded: it cannot rename a replacement terminal, remove its assignment, or mark it offline. If the connection changes during an operation, inspect the current state before repeating it; a lost response does not establish whether the operation ran.
+
+When the extension restarts its manager, previous requests settle and their listeners are removed. Preserving a terminal process does not retain the old manager's waits. Queued commands are not dispatched during restart.

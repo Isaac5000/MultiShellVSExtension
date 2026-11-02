@@ -60,6 +60,8 @@ async function main(){
   assert.equal(state.shells.find(s=>s.shell_id==='gay').origin,'user');
   assert.equal(c.router.resolve('gay'),'gay','recovered shell must be registered with hub');
   await assert.rejects(c.router.execute('gay','nope',5000),/requires confirmation/);
+  await assert.rejects(c.panelConfirmRestoredShell('gay'),/automatic idle verification/);
+  fire('ended',{terminal:oldUser,execution:{},exitCode:0});
   const confirmed=await c.panelConfirmRestoredShell('gay');
   assert.equal(confirmed.recovery_required,false);
   const result=await c.router.execute('gay','echo resumed',8000);

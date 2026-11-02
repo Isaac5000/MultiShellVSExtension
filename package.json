@@ -3,7 +3,7 @@
   "icon": "media/logo.png",
   "displayName": "MultiShell MCP Server",
   "description": "Multi-window VSCode MCP server with bilingual terminal panel, scoped shells and legacy connector support",
-  "version": "0.10.25",
+  "version": "0.10.29",
   "publisher": "local-multishell",
   "license": "MIT",
   "engines": {
@@ -98,6 +98,9 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src media/panel.js --max-warnings 0",
     "test": "npm run test:multishell",
+    "test:vscode": "node scripts/run-vscode-terminal-tests.cjs",
+    "test:connection": "node --expose-gc test/connection-soak.cjs",
+    "test:windows": "node scripts/run-vscode-connection-tests.cjs",
     "package": "vsce package --allow-missing-repository --no-rewrite-relative-links",
     "test:multishell": "npm run compile && node scripts/bundle.cjs && node scripts/run-tests.cjs",
     "test:panel": "node test/test-panel.cjs && node test/test-panel-layout.cjs",
@@ -111,7 +114,7 @@
     "@typescript-eslint/parser": "^8.28.0",
     "@vscode/vsce": "4.1.0",
     "esbuild": "^0.28.2",
-    "eslint": "^9.23.0",
+    "eslint": "^10.14.0",
     "proxyquire": "^2.1.3",
     "typescript": "^5.8.2"
   },
@@ -119,6 +122,9 @@
     "@modelcontextprotocol/sdk": "^1.10.1",
     "express": "^4.18.3",
     "zod": "^4.6.7"
+  },
+  "overrides": {
+    "minimatch": "11.0.1"
   },
   "capabilities": {
     "untrustedWorkspaces": {

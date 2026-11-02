@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { inspectPowerShellReadiness, ShellReadiness } from './shell-readiness';
 
 export type ShellOrigin = 'user' | 'mcp' | 'automatic';
 export interface SavedUserShell {shell_id:string; initial_cwd:string; alias?:string;}
@@ -8,7 +9,21 @@ export interface SavedUserShell {shell_id:string; initial_cwd:string; alias?:str
  * Never trust this without also matching the restored process ID and cwd. */
 export interface SavedIdleProof {initial_cwd:string; process_id:number; saved_at:number;}
 
+export type ShellRecoveryReason = 'restored_unverified' | 'ambiguous_completion' | 'unverified_execution';
+export type ShellExecutionPhase =
+    'waiting_for_integration' | 'running' | 'waiting_for_completion' |
+    'output_error_waiting_for_completion' | 'draining_output' | 'timed_out_preserved';
+export type ShellInputHint = 'pager' | 'confirmation' | 'credentials';
+
 export interface ShellDescription {
+    /** A manually started terminal command is active, not an MCP queue item. */
+    external_busy?: boolean;
+    recovery_reason?: ShellRecoveryReason;
+    /** Best-effort observations, not proof that a process is waiting for input. */
+    execution_phase?: ShellExecutionPhase;
+    input_wait_hint?: ShellInputHint;
+    /** Seconds since the last captured output; can include legitimate silent work. */
+    output_silent_seconds?: number;
     origin: ShellOrigin;
     timed_out_running: boolean;
     recovery_required: boolean;
@@ -35,19 +50,44 @@ interface ShellEntry {
     origin: ShellOrigin;
     timedOutRunning: boolean;
     recoveryRequired: boolean;
-    queuedCancels:Set<()=>void>;
+    recoveryReason?: ShellRecoveryReason;
+    executionPhase?: ShellExecutionPhase;
+    inputWaitHint?: ShellInputHint;
+    lastOutputAt?: number;
+    queuedCancels:Set<(reason?:string)=>void>;
     terminal: vscode.Terminal;
     queued: number;
     active: boolean;
     closed: boolean;
     queue: Promise<void>;
     confirmIdleAfterTimeout?:()=>void;
+    detachExecution?:()=>void;
     createdByManager?:boolean;
     commandInvoked?:boolean;
+    currentExecution?:vscode.TerminalShellExecution;
 }
 const SHELL_ID = /^[A-Za-z][A-Za-z0-9_-]{1,39}$/;
 const MAX_OUTPUT = 1_000_000;
 const MAX_TIMEOUT = 3_600_000;
+
+/** Classify potential interactive prompts without ever sending input. A
+ * prompt is only an observation: program output can contain these strings as
+ * ordinary text. Keep this classifier separate from automatic pager exit. */
+export function detectInputWaitHint(recentOutput:string):ShellInputHint|undefined {
+    const plain=recentOutput.slice(-8192)
+        .replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g,'')
+        .replace(/\r/g,'\n').trimEnd();
+    if(/(?:\(END\)|(?:^|\n):|--\s*(?:More|Más|Mehr|Plus|Mais|Altro)\s*--)$/i.test(plain)){
+        return 'pager';
+    }
+    if(/(?:password|passphrase|contraseña|introduce la clave|enter passphrase)(?:\s+for\s+[^\n:]+)?\s*:\s*$/i.test(plain)){
+        return 'credentials';
+    }
+    if(/(?:\[(?:Y\/n|y\/N|s\/N|S\/n|yes\/no)\]|\((?:y\/n|yes\/no|s\/n)\)|press (?:any key|enter) to continue(?:[.\s…]*)|pulsa (?:una tecla|intro) para continuar)\s*[:?]?$/i.test(plain)){
+        return 'confirmation';
+    }
+    return undefined;
+}
 
 /** Only standalone allowlisted programs may receive q.
  * A recognized command is necessary but NOT sufficient: its current output
@@ -114,6 +154,8 @@ export class ShellManager implements vscode.Disposable {
     private readonly observedExecutions=new WeakMap<vscode.Terminal,Set<vscode.TerminalShellExecution>>();
     /** Completion events may arrive while VS Code is still reattaching terminals. */
     private readonly observedIdle=new WeakMap<vscode.Terminal,boolean>();
+    private readonly activityRevisions=new WeakMap<vscode.Terminal,number>();
+    private recoveryWork?:Promise<string[]>;
     private disposed = false;
     private windowInteractiveAutoExit=true;
     private readonly idleProofs=new Map<string,SavedIdleProof>();
@@ -164,8 +206,9 @@ export class ShellManager implements vscode.Disposable {
         }
         if(this.observedIdle.get(entry.terminal)===false){
             entry.recoveryRequired=true;
+            entry.recoveryReason='unverified_execution';
             this.notifyIdleState();
-            throw new Error('Terminal "'+entry.id+'" has an ambiguous execution state. Confirm it is idle in the MultiShell panel before sending MCP commands.');
+            throw new Error('Terminal "'+entry.id+'" has an ambiguous execution state. Automatic idle verification will retry; no input was sent.');
         }
     }
 
@@ -223,30 +266,56 @@ export class ShellManager implements vscode.Disposable {
         }));
         return proofs;
     }
-    /** Re-attach without a manual prompt only when the original physical
-     * process PID and canonical cwd match the last known idle session.
-     * An observed new shell execution invalidates that evidence. */
+    /** Reconcile stale state from shell-side readiness or saved process
+     * evidence. New foreground activity invalidates asynchronous inspections. */
     async resumeProvenIdleTerminals():Promise<string[]>{
+        if(this.recoveryWork){return this.recoveryWork;}
+        const work=this.resumeIdleTerminals();
+        this.recoveryWork=work;
+        try{return await work;}
+        finally{if(this.recoveryWork===work){this.recoveryWork=undefined;}}
+    }
+    private async resumeIdleTerminals():Promise<string[]>{
         const resumed:string[]=[];
-        for(const entry of this.shells.values()){
-            if(!entry.recoveryRequired||entry.active||entry.queued||entry.closed||
-                entry.timedOutRunning||this.observedIdle.get(entry.terminal)===false||
-                (this.observedExecutions.get(entry.terminal)?.size||0)>0){continue;}
-            const proof=this.idleProofs.get(entry.id);
-            if(!proof||!this.sameCwd(proof.initial_cwd,entry.cwd)){continue;}
+        // Public shell events can be lost on reload or cancellation. Inspect
+        // the actual foreground runspace, not CPU use, silence or child counts.
+        await Promise.all([...this.shells.values()].filter(entry=>
+            !entry.closed&&(entry.recoveryRequired||entry.timedOutRunning||
+                (!entry.active&&((this.observedExecutions.get(entry.terminal)?.size||0)>0||
+                    this.observedIdle.get(entry.terminal)===false))||
+                entry.executionPhase==='waiting_for_completion'||
+                entry.executionPhase==='output_error_waiting_for_completion')
+        ).map(async entry=>{
+            const revision=this.activityRevisions.get(entry.terminal)||0;
             const pid=await this.terminalProcessId(entry.terminal);
-            if(pid===undefined||pid!==proof.process_id){continue;}
-            // No shell-start event could have appeared while the async PID
-            // resolution was pending; check again before unlocking.
-            if(entry.recoveryRequired&&!entry.closed&&!entry.active&&!entry.queued&&
-                this.observedIdle.get(entry.terminal)!==false&&
-                (this.observedExecutions.get(entry.terminal)?.size||0)===0){
-                entry.recoveryRequired=false;
-                this.observedIdle.set(entry.terminal,true);
-                this.idleProofs.delete(entry.id);
-                resumed.push(entry.id);
+            if(pid===undefined){return;}
+            let readiness:ShellReadiness;
+            try{readiness=await this.inspectReadiness(pid);}
+            catch{readiness='unknown';}
+            if(this.disposed||entry.closed||
+                this.shells.get(entry.id)!==entry||
+                (this.activityRevisions.get(entry.terminal)||0)!==revision){return;}
+            if(readiness==='busy'){return;}
+            if(readiness!=='idle'){
+                // A failed PowerShell inspection must not resurrect an old idle
+                // snapshot. Legacy proof applies only to unsupported shells.
+                if(readiness!=='unsupported'){return;}
+                const proof=this.idleProofs.get(entry.id);
+                if(!entry.recoveryRequired||entry.active||entry.queued||entry.timedOutRunning||
+                    this.observedIdle.get(entry.terminal)===false||
+                    (this.observedExecutions.get(entry.terminal)?.size||0)>0||
+                    !proof||pid!==proof.process_id||!this.sameCwd(proof.initial_cwd,entry.cwd)){return;}
             }
-        }
+            // A foreground start during the asynchronous inspection invalidates
+            // its proof. An idle runspace reconciles only the older snapshot.
+            this.observedExecutions.delete(entry.terminal);
+            this.observedIdle.set(entry.terminal,true);
+            entry.recoveryRequired=false;
+            entry.recoveryReason=undefined;
+            entry.confirmIdleAfterTimeout?.();
+            this.idleProofs.delete(entry.id);
+            if(!resumed.includes(entry.id)){resumed.push(entry.id);}
+        }));
         if(resumed.length){this.notifyIdleState();}
         return resumed;
     }
@@ -267,13 +336,14 @@ export class ShellManager implements vscode.Disposable {
         return true;
     }
 
-    constructor() {
+    constructor(private readonly inspectReadiness:(pid:number)=>Promise<ShellReadiness>=inspectPowerShellReadiness) {
         // There is no reliable public VS Code "is terminal idle" property.
-        // Only a shell-integration completion event is evidence of an ended
-        // foreground command. Never probe by executing text: executeCommand()
+        // Shell events and separate runspace inspections provide idle proof.
+        // Never probe by executing text in the terminal: executeCommand()
         // can send Ctrl+C and interrupt a preserved user process.
         if(typeof vscode.window.onDidStartTerminalShellExecution==='function'){
             this.recoveryStartListener=vscode.window.onDidStartTerminalShellExecution(event=>{
+                this.activityRevisions.set(event.terminal,(this.activityRevisions.get(event.terminal)||0)+1);
                 let active=this.observedExecutions.get(event.terminal);
                 if(!active){
                     active=new Set();
@@ -288,6 +358,7 @@ export class ShellManager implements vscode.Disposable {
         }
         if(typeof vscode.window.onDidEndTerminalShellExecution==='function'){
             this.recoveryEndListener=vscode.window.onDidEndTerminalShellExecution(event=>{
+                this.activityRevisions.set(event.terminal,(this.activityRevisions.get(event.terminal)||0)+1);
                 const active=this.observedExecutions.get(event.terminal);
                 active?.delete(event.execution);
                 // VS Code documents undefined exit codes for cancelled commands
@@ -296,6 +367,16 @@ export class ShellManager implements vscode.Disposable {
                 const definiteEnd=typeof event.exitCode==='number' &&
                     (!active || active.size===0);
                 this.observedIdle.set(event.terminal,definiteEnd);
+                if(!definiteEnd){
+                    // An undefined exit code is not proof the command is still running,
+                    // but neither can the extension safely prove the terminal idle.
+                    for(const entry of this.shells.values()){
+                        if(entry.terminal===event.terminal && !entry.closed && !entry.active){
+                            entry.recoveryRequired=true;
+                            entry.recoveryReason='ambiguous_completion';
+                        }
+                    }
+                }
                 if([...this.shells.values()].some(e=>e.terminal===event.terminal)){
                     this.notifyIdleState();
                 }
@@ -305,6 +386,7 @@ export class ShellManager implements vscode.Disposable {
                         entry.recoveryRequired && !entry.closed &&
                         !entry.active && entry.queued===0){
                         entry.recoveryRequired=false;
+                        entry.recoveryReason=undefined;
                         this.notifyIdleState();
                         break;
                     }
@@ -379,6 +461,7 @@ export class ShellManager implements vscode.Disposable {
             const cwd=fs.realpathSync(workspace);
             this.shells.set(id,{id,cwd,origin:'automatic',timedOutRunning:false,
                 recoveryRequired:this.observedIdle.get(terminal)!==true,
+                recoveryReason:this.observedIdle.get(terminal)===true?undefined:'restored_unverified',
                 queuedCancels:new Set(),terminal,queued:0,active:false,closed:false,queue:Promise.resolve()});
         }
         return id;
@@ -433,6 +516,7 @@ export class ShellManager implements vscode.Disposable {
             }catch{continue;}
             const entry:ShellEntry={id,cwd,origin:'user',timedOutRunning:false,
                 recoveryRequired:this.observedIdle.get(terminal)!==true,
+                recoveryReason:this.observedIdle.get(terminal)===true?undefined:'restored_unverified',
                 queuedCancels:new Set(),terminal,queued:0,active:false,closed:false,queue:Promise.resolve()};
             this.shells.set(id,entry);
             recovered.push(this.describe(entry));
@@ -451,13 +535,23 @@ export class ShellManager implements vscode.Disposable {
                 throw new Error('Timed-out shell recovery is unavailable: '+id);
             }
             // Explicit user confirmation: never interrupt the preserved process.
+            const active=this.observedExecutions.get(entry.terminal);
+            if([...active||[]].some(execution=>execution!==entry.currentExecution)){
+                throw new Error('Another external command is still active: '+id);
+            }
+            if(entry.currentExecution){active?.delete(entry.currentExecution);}
             entry.confirmIdleAfterTimeout();
             this.observedIdle.set(entry.terminal,true);
+            entry.recoveryReason=undefined;
             this.notifyIdleState();
             return this.describe(entry);
         }
         if(entry.active||entry.queued){throw new Error('Terminal is still busy: '+id);}
+        if((this.observedExecutions.get(entry.terminal)?.size||0)>0){
+            throw new Error('Terminal "'+id+'" has an observed external command still active. Do not confirm idle while it is running.');
+        }
         entry.recoveryRequired=false;
+        entry.recoveryReason=undefined;
         this.observedIdle.set(entry.terminal,true);
         this.notifyIdleState();
         return this.describe(entry);
@@ -514,7 +608,17 @@ export class ShellManager implements vscode.Disposable {
         return this.describe(entry);
     }
     private describe(entry: ShellEntry): ShellDescription {
-        return { shell_id: entry.id, initial_cwd: entry.cwd, origin:entry.origin, timed_out_running:entry.timedOutRunning, recovery_required:entry.recoveryRequired, busy: entry.active, queued: entry.queued,
+        const externalBusy=!entry.active && (this.observedExecutions.get(entry.terminal)?.size||0)>0;
+        const activeMcp=entry.active||entry.timedOutRunning;
+        const silentSeconds=activeMcp&&entry.lastOutputAt!==undefined
+            ?Math.max(0,Math.floor((Date.now()-entry.lastOutputAt)/1000)):undefined;
+        return { shell_id: entry.id, initial_cwd: entry.cwd, origin:entry.origin,
+            timed_out_running:entry.timedOutRunning, recovery_required:entry.recoveryRequired,
+            recovery_reason:entry.recoveryReason, external_busy:externalBusy,
+            execution_phase:activeMcp?entry.executionPhase:undefined,
+            input_wait_hint:activeMcp?entry.inputWaitHint:undefined,
+            output_silent_seconds:silentSeconds,
+            busy: entry.active || externalBusy, queued: entry.queued,
             auto_exit_interactive:this.autoExitEnabled(entry.id),
             auto_exit_override:this.interactiveOverrides.get(entry.id) };
     }
@@ -550,9 +654,12 @@ export class ShellManager implements vscode.Disposable {
         }
         const entry=this.shells.get(id);
         if (!entry || entry.closed) { throw new Error('Unknown shell_id "' + id + '". Call create_shell_code first.'); }
-        if(entry.recoveryRequired){throw new Error('Restored shell "'+id+'" requires confirmation in the VSCode MultiShell panel that its previous command is no longer running. The existing terminal was preserved.');}
+        if(entry.recoveryRequired||entry.timedOutRunning||(!entry.active&&
+            ((this.observedExecutions.get(entry.terminal)?.size||0)>0||
+                this.observedIdle.get(entry.terminal)===false))){await this.resumeProvenIdleTerminals();}
+        if(entry.recoveryRequired){throw new Error('Restored shell "'+id+'" requires confirmation of idle state by automatic verification. Retry shortly. Reason: '+(entry.recoveryReason||'unverified')+'. No input was sent to the terminal.');}
         if (entry.timedOutRunning) {
-            throw new Error('Shell "'+id+'" has a command still running after its timeout. Its process was preserved because this is a user-created or primary terminal. Wait for it to finish or interrupt it manually in VSCode before sending another command.');
+            throw new Error('Shell "'+id+'" has a command still running after its timeout. Its process was preserved because this is a user-created or primary terminal. Automatic verification will restore access when it is idle; no input was sent.');
         }
         if(signal?.aborted){throw new Error('MCP command cancelled before execution.');}
         entry.queued++;
@@ -563,11 +670,11 @@ export class ShellManager implements vscode.Disposable {
         entry.queue=new Promise<void>(resolve=>{release=resolve;});
         let started=false;
         let dequeued=false;
-        let cancelQueued!:()=>void;
+        let cancelQueued!:(reason?:string)=>void;
         const cancelled=new Promise<never>((_,reject)=>{
-            cancelQueued=()=>reject(new Error('Shell "'+id+'" is still running its timed-out preserved command. Queued MCP command cancelled to protect the user session.'));
+            cancelQueued=(reason)=>reject(new Error(reason||'Shell "'+id+'" is still running its timed-out preserved command. Queued MCP command cancelled to protect the user session.'));
         });
-        const abortQueued=()=>{cancelQueued();};
+        const abortQueued=()=>{cancelQueued('MCP command cancelled while queued.');};
         signal?.addEventListener('abort',abortQueued,{once:true});
         if(signal?.aborted){abortQueued();}
         entry.queuedCancels.add(cancelQueued);
@@ -586,14 +693,20 @@ export class ShellManager implements vscode.Disposable {
             this.guardExternalExecution(entry);
             started=true;
             entry.active=true;
+            entry.executionPhase='waiting_for_integration';
+            entry.inputWaitHint=undefined;
+            entry.lastOutputAt=Date.now();
             entry.commandInvoked=true;
             this.notifyIdleState();
             return await this.executeNow(entry,command,timeoutMs,()=>{
                 entry.active=false;
                 entry.timedOutRunning=false;
+                entry.executionPhase=undefined;
+                entry.inputWaitHint=undefined;
+                entry.lastOutputAt=undefined;
                 release();
                 this.notifyIdleState();
-            });
+            },signal);
         } finally {
             signal?.removeEventListener('abort',abortQueued);
             entry.queuedCancels.delete(cancelQueued);
@@ -606,7 +719,7 @@ export class ShellManager implements vscode.Disposable {
             }
         }
     }
-    private async executeNow(entry: ShellEntry, command: string, timeoutMs: number, onFinished:()=>void): Promise<ShellExecutionResult> {
+    private async executeNow(entry: ShellEntry, command: string, timeoutMs: number, onFinished:()=>void,signal?:AbortSignal): Promise<ShellExecutionResult> {
         const terminal=entry.terminal;
         let output='';
         let truncated=false;
@@ -625,13 +738,25 @@ export class ShellManager implements vscode.Disposable {
         const safeInteractive=this.autoExitEnabled(entry.id) ? recognizedInteractiveCommand(command) : undefined;
         let confirmIdle!:()=>void;
         let releaseIntegrationWait!:()=>void;
+        let stopReading!:()=>void;
+        let outputIterator:AsyncIterator<string>|undefined;
+        const readerStopped=new Promise<undefined>(resolve=>{stopReading=()=>resolve(undefined);});
+        let cancelBeforeDispatch!:()=>void;
+        const cancelledBeforeDispatch=new Promise<never>((_,reject)=>{
+            cancelBeforeDispatch=()=>{if(!execution){reject(new Error('MCP command cancelled before execution.'));}};
+        });
         const interruptedIntegrationWait=new Promise<void>(resolve=>{releaseIntegrationWait=resolve;});
         const manuallyReleased=new Promise<void>(resolve=>{confirmIdle=resolve;});
         const finish=()=>{
             if(finished){return;}
             finished=true;
+            stopReading();
+            try{void Promise.resolve(outputIterator?.return?.()).catch(()=>{});}catch{}
             releaseIntegrationWait();
+            signal?.removeEventListener('abort',cancelBeforeDispatch);
+            entry.currentExecution=undefined;
             entry.confirmIdleAfterTimeout=undefined;
+            entry.detachExecution=undefined;
             endListener?.dispose();
             integrationListener?.dispose();
             closeListener?.dispose();
@@ -641,6 +766,8 @@ export class ShellManager implements vscode.Disposable {
             confirmIdle();
             finish();
         };
+        signal?.addEventListener('abort',cancelBeforeDispatch,{once:true});
+        if(signal?.aborted){cancelBeforeDispatch();}
         // For a user-owned terminal the timeout only stops WAITING for the response.
         // It must not terminate the process, detach its completion listener, or
         // release the FIFO gate while the original command is still running.
@@ -651,8 +778,9 @@ export class ShellManager implements vscode.Disposable {
                 }else if(this.preserveOnTimeout(entry)){
                     timedOutPreserved=true;
                     entry.timedOutRunning=true;
+                    entry.executionPhase='timed_out_preserved';
                     for(const cancel of [...entry.queuedCancels]){cancel();}
-                    reject(new Error('Command timed out in preserved shell "'+entry.id+'". Terminal and running process preserved. Return to VSCode; no new MCP command will be sent until the original command finishes.'));
+                    reject(new Error('Command timed out in preserved shell "'+entry.id+'". A command may still be running, waiting for user input, or missing its VSCode completion event. Process preserved; no new MCP command will be sent until completion or explicit idle confirmation.'));
                 }else{
                     // Reject before disposing: VSCode fires its close event synchronously.
                     // This preserves the more informative timeout error for the caller.
@@ -664,6 +792,11 @@ export class ShellManager implements vscode.Disposable {
             },timeoutMs);
         });
         const closed=new Promise<never>((_,reject)=>{
+            entry.detachExecution=()=>{
+                reject(new Error('Shell manager stopped; no further command will be dispatched.'));
+                confirmIdle();
+                finish();
+            };
             closeListener=vscode.window.onDidCloseTerminal(t=>{
                 if(t===terminal){
                     finish();
@@ -686,40 +819,65 @@ export class ShellManager implements vscode.Disposable {
             if(finished || entry.closed || !terminal.shellIntegration){
                 throw new Error('Shell integration unavailable or terminal closed.');
             }
-            const completed=new Promise<void>(resolve=>{
-                endListener=vscode.window.onDidEndTerminalShellExecution(e=>{
-                    if(e.terminal===terminal && e.execution===execution){
-                        if(typeof e.exitCode!=='number'){
-                            // VS Code also emits undefined for cancelled
-                            // commands and sub-shell transitions. Never treat
-                            // it as reliable completion of our execution.
-                            ambiguousEndSeen=true;
-                            return;
-                        }
-                        exitCode=e.exitCode;
-                        commandEnded=true;
-                        // The command HAS ended. Do not let its old execution
-                        // timeout close a terminal while we briefly drain
-                        // any remaining buffered output.
-                        if(timer){clearTimeout(timer);timer=undefined;}
-                        resolve();
-                    }
-                });
+            if(signal?.aborted){throw new Error('MCP command cancelled before execution.');}
+            if(entry.recoveryRequired){throw new Error('Shell requires idle verification before execution.');}
+            this.guardExternalExecution(entry);
+            // Some VS Code integration implementations fire an end event
+            // synchronously within executeCommand(), before it returns the
+            // execution object. Retain those events and replay only the
+            // matching one once the identity is known, never a foreign event.
+            const earlyEnds:Array<{execution:vscode.TerminalShellExecution;exitCode:number|undefined}>=[];
+            let complete!:()=>void;
+            const completed=new Promise<void>(resolve=>{complete=resolve;});
+            const handleEnd=(event:{execution:vscode.TerminalShellExecution;exitCode:number|undefined})=>{
+                if(event.execution!==execution||commandEnded){return;}
+                if(typeof event.exitCode!=='number'){
+                    ambiguousEndSeen=true;
+                    return;
+                }
+                exitCode=event.exitCode;
+                commandEnded=true;
+                entry.executionPhase='draining_output';
+                this.notifyIdleState();
+                if(timer){clearTimeout(timer);timer=undefined;}
+                complete();
+            };
+            endListener=vscode.window.onDidEndTerminalShellExecution(e=>{
+                if(e.terminal!==terminal){return;}
+                if(!execution){earlyEnds.push({execution:e.execution,exitCode:e.exitCode});return;}
+                handleEnd({execution:e.execution,exitCode:e.exitCode});
             });
             execution=terminal.shellIntegration.executeCommand(command);
+            entry.currentExecution=execution;
+            if(!commandEnded){
+                entry.executionPhase='running';
+                entry.lastOutputAt=Date.now();
+            }
+            for(const event of earlyEnds){handleEnd(event);}
+            this.notifyIdleState();
             let readFailure:unknown;
             let readSettled=false;
             const read=(async()=>{
                 try{
-                for await(const chunk of execution!.read()){
+                outputIterator=execution!.read()[Symbol.asyncIterator]();
+                while(!finished){
+                    const next=await Promise.race([outputIterator.next(),readerStopped]);
+                    if(!next||next.done||finished){break;}
+                    const chunk=next.value;
                     if(output.length<MAX_OUTPUT){output+=chunk.slice(0,MAX_OUTPUT-output.length);}
                     if(output.length===MAX_OUTPUT){truncated=true;}
+                    if(chunk.length>0){
+                        entry.lastOutputAt=Date.now();
+                        terminalScreen=(terminalScreen+chunk).slice(-16384);
+                        // Only surface an input hint. Do not automatically
+                        // answer confirmations, passwords or unknown pagers.
+                        entry.inputWaitHint=detectInputWaitHint(terminalScreen);
+                    }
                     // Send q ONLY on a recognized pager prompt or full-screen
                     // entry for this command, never on arbitrary first output.
                     // Do not defer a keystroke in a timer that could fire after
                     // a short-lived program has already exited.
                     if(safeInteractive&&!autoExitSent&&chunk.length>0){
-                        terminalScreen=(terminalScreen+chunk).slice(-16384);
                         if(!ambiguousEndSeen&&interactiveReadyForQuit(safeInteractive,terminalScreen)&&
                             typeof terminal.sendText==='function'&&
                             !finished&&!commandEnded&&!entry.closed&&entry.active){
@@ -736,7 +894,15 @@ export class ShellManager implements vscode.Disposable {
                     // Wait for the terminal's completion event (or an explicit
                     // user acknowledgement) before releasing the FIFO gate.
                     readFailure=error;
-                }finally{readSettled=true;}
+                }finally{
+                    readSettled=true;
+                    if(!finished && !commandEnded && !entry.closed){
+                        entry.executionPhase=readFailure
+                            ?'output_error_waiting_for_completion'
+                            :'waiting_for_completion';
+                        this.notifyIdleState();
+                    }
+                }
             })();
             // A command-completion event is definitive even if the VS Code
             // output iterator lingers. Drain for 750 ms, then report partial
@@ -765,7 +931,7 @@ export class ShellManager implements vscode.Disposable {
         // Both branches are handled to avoid unhandled rejections.
         void running.then(finish,finish);
         try{
-            return await Promise.race([running,deadline,closed]);
+            return await Promise.race([running,deadline,closed,cancelledBeforeDispatch]);
         }finally{
             if(timer){clearTimeout(timer);}
             if(!timedOutPreserved){finish();}
@@ -780,6 +946,8 @@ export class ShellManager implements vscode.Disposable {
         this.idleStateListener=undefined;
         for (const entry of this.shells.values()) {
             entry.closed = true;
+            for(const cancel of [...entry.queuedCancels]){cancel('Shell manager stopped; queued command cancelled.');}
+            entry.detachExecution?.();
             if(!preserveTerminals){entry.terminal.dispose();}
         }
         this.shells.clear();

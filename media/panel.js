@@ -41,8 +41,20 @@
     originMcp: 'MCP',
     originAutomatic: 'Automática',
     timedOutRunning: 'Tiempo agotado · proceso conservado',
-    recoveredShell: 'Recuperada · confirma que está libre',
-    enableRestored: 'Volver a habilitar MCP',
+    recoveredShell: 'Recuperada · verificando disponibilidad',
+    restoredUnverified: 'Restaurada · verificación automática pendiente',
+    ambiguousCompletion: 'Finalización no confirmada · verificación automática',
+    unverifiedExecution: 'Comprobando el estado real de la terminal',
+    externalBusy: 'Ocupada · comando externo a MCP',
+    integrationPending: 'Esperando integración de terminal (orden aún no iniciada)',
+    completionPending: 'Salida finalizada · esperando confirmación de VS Code',
+    outputReadFailed: 'Error de lectura · esperando finalización confirmada',
+    outputDraining: 'Orden terminada · recogiendo salida',
+    possiblePager: 'Posible paginador esperando entrada',
+    possibleConfirmation: 'Posible confirmación pendiente',
+    possibleCredentials: 'Posible solicitud de credenciales',
+    possibleSilentWait: 'Sin salida reciente · podría estar trabajando o esperando entrada',
+    enableRestored: 'Comprobar disponibilidad',
     restoredReady: 'Terminal restaurada y disponible',
     queued: 'En cola',
     busy: 'Ocupada',
@@ -135,8 +147,20 @@
     originMcp: 'MCP',
     originAutomatic: 'Automatic',
     timedOutRunning: 'Timed out · process preserved',
-    recoveredShell: 'Restored · confirm it is idle',
-    enableRestored: 'Re-enable MCP',
+    recoveredShell: 'Restored · checking availability',
+    restoredUnverified: 'Restored · automatic verification pending',
+    ambiguousCompletion: 'Completion unverified · checking automatically',
+    unverifiedExecution: 'Checking the actual terminal state',
+    externalBusy: 'Busy · command outside MCP',
+    integrationPending: 'Waiting for terminal integration (command not started)',
+    completionPending: 'Output ended · waiting for VS Code completion event',
+    outputReadFailed: 'Output read error · waiting for confirmed completion',
+    outputDraining: 'Command ended · draining output',
+    possiblePager: 'Possible pager awaiting input',
+    possibleConfirmation: 'Possible confirmation prompt awaiting input',
+    possibleCredentials: 'Possible credentials prompt awaiting input',
+    possibleSilentWait: 'No recent output · may be working or awaiting input',
+    enableRestored: 'Check availability',
     restoredReady: 'Terminal restored and available',
     queued: 'Queued',
     busy: 'Busy',
@@ -438,11 +462,29 @@
         shell.shell_id
       );
       idLine.title = primary ? shell.shell_id : shell.initial_cwd;
-      const status = el(
-        'span',
-        'row-status' + (shell.busy ? ' running' : ''),
-        t(shell.recovery_required ? 'recoveredShell' : shell.timed_out_running ? 'timedOutRunning' : shell.busy ? 'busy' : 'idle')
-      );
+      const statusKey = shell.external_busy ? 'externalBusy'
+        : shell.recovery_required
+          ? (shell.recovery_reason === 'restored_unverified' ? 'restoredUnverified'
+            : shell.recovery_reason === 'ambiguous_completion' ? 'ambiguousCompletion'
+            : shell.recovery_reason === 'unverified_execution' ? 'unverifiedExecution'
+            : 'recoveredShell')
+          : shell.timed_out_running ? 'timedOutRunning'
+          : shell.execution_phase === 'waiting_for_integration' ? 'integrationPending'
+          : shell.execution_phase === 'waiting_for_completion' ? 'completionPending'
+          : shell.execution_phase === 'output_error_waiting_for_completion' ? 'outputReadFailed'
+          : shell.execution_phase === 'draining_output' ? 'outputDraining'
+          : shell.busy ? 'busy' : 'idle';
+      const status = el('span', 'row-status' + (shell.busy ? ' running' : ''), t(statusKey));
+      if(shell.busy || shell.timed_out_running){
+        const hint = shell.input_wait_hint === 'pager' ? 'possiblePager'
+          : shell.input_wait_hint === 'confirmation' ? 'possibleConfirmation'
+          : shell.input_wait_hint === 'credentials' ? 'possibleCredentials'
+          : null;
+        if(hint){status.textContent += ' · ' + t(hint);}
+        else if((shell.execution_phase === 'running' || shell.timed_out_running) && shell.output_silent_seconds >= 20){
+          status.textContent += ' · ' + t('possibleSilentWait');
+        }
+      }
       if (shell.queued > 0)
         {status.textContent += ' · ' + t('queued') + ': ' + shell.queued;}
       details.append(nameLine, aliasLine, idLine, status);

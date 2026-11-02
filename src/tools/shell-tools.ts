@@ -21,7 +21,7 @@ export function registerShellTools(server: McpServer, shells: ShellApi, requestS
             allow_shared_directory: z.boolean().optional().default(false).describe('Explicitly allow another shell in the same directory. Dangerous for concurrent builds and Git commands; default false.')
         },
         async ({ shell_id, cwd, window_id, allow_shared_directory }): Promise<CallToolResult> => {
-            try { return message({ created: await shells.create(shell_id, cwd, allow_shared_directory, window_id) }); }
+            try { return message({ created: await shells.create(shell_id, cwd, allow_shared_directory, window_id, undefined, {signal:requestSignal}) }); }
             catch (error) { return errorOf(error); }
         });
 
@@ -57,7 +57,7 @@ export function registerShellTools(server: McpServer, shells: ShellApi, requestS
         async ({shell_id,alias}):Promise<CallToolResult>=>{
             try{
                 if(!shells.setAlias){throw new Error('Alias changes unavailable.');}
-                return message(await shells.setAlias(shell_id,alias));
+                return message(await shells.setAlias(shell_id,alias,{signal:requestSignal}));
             }catch(error){return errorOf(error);}
         });
 
@@ -65,7 +65,7 @@ export function registerShellTools(server: McpServer, shells: ShellApi, requestS
         'Close an explicitly selected shell. Closing a persistent USER terminal additionally requires local VSCode confirmation; temporary MCP terminals close normally. Running commands will be interrupted.',
         { shell_id: z.string().describe('Exact identifier to close') },
         async ({ shell_id }): Promise<CallToolResult> => {
-            try { await shells.close(shell_id); return message({ closed: shell_id }); }
+            try { await shells.close(shell_id,{signal:requestSignal}); return message({ closed: shell_id }); }
             catch (error) { return errorOf(error); }
         });
 

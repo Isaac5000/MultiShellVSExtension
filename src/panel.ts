@@ -12,7 +12,7 @@ interface Snapshot {
     activePort?: number;
     windowAutoExit?: boolean;
     requests?: UserShellRequest[];
-    shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; busy: boolean; queued: number; auto_exit_interactive?:boolean; auto_exit_override?:boolean }>;
+    shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; recovery_reason?: string; external_busy?: boolean; execution_phase?: string; input_wait_hint?: string; output_silent_seconds?: number; busy: boolean; queued: number; auto_exit_interactive?:boolean; auto_exit_override?:boolean }>;
     windows?: Array<{ window_id: string; workspace: string; online: boolean }>;
 }
 interface UIMessage {
@@ -319,12 +319,6 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                 await this.view?.webview.postMessage({ type: 'notice', key: 'created' });
             } else if(raw.type === 'confirm_restore') {
                 if(typeof raw.id!=='string'){throw new Error('Invalid shell ID');}
-                const answer=await vscode.window.showWarningMessage(
-                    this.locale()==='es'
-                    ? 'Confirma que el comando anterior ha terminado. Si sigue ejecutándose, espera o interrúmpelo en la terminal antes de reactivar MCP.'
-                    : 'Confirm the previous command has finished. If it is still running, wait or interrupt it in the terminal before re-enabling MCP.',
-                    {modal:true},this.locale()==='es'?'Confirmar disponible':'Confirm idle');
-                if(!answer){return;}
                 await manager.panelConfirmRestoredShell(raw.id);
                 await this.view?.webview.postMessage({type:'notice',key:'restoredReady'});
             } else if (raw.type === 'show' || raw.type === 'close') {

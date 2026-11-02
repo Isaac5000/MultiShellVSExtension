@@ -2,7 +2,7 @@
 
 [English](../en/compatibility.md) · [Índice](../../README.md)
 
-MultiShell MCP 0.10.25 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
+MultiShell MCP 0.10.29 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
 
 ## Herramientas actuales
 

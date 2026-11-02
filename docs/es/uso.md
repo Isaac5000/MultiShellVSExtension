@@ -2,7 +2,7 @@
 
 [English](../en/usage.md) · [Índice](../../README.md)
 
-Comportamiento de **MultiShell MCP Server 0.10.25**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
+Comportamiento de **MultiShell MCP Server 0.10.29**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
 
 ## 1. Iniciar y seleccionar una terminal
 
@@ -58,17 +58,21 @@ Puedes copiar el selector o una instrucción para ChatGPT desde el panel. El ali
 
 ## 5. Timeouts, bloqueos y recuperación
 
-**Recuperación automática segura:** tras restaurar una sesión, MultiShell espera un evento inequívoco de finalización de comando de la integración de shell de VS Code. Si lo recibe (con código de salida y sin otras ejecuciones conocidas en curso), desbloquea esa terminal automáticamente, sin enviar comandos ni señales. Si la terminal ya estaba libre antes de la restauración, pero no se observa ese evento, seguirá requiriendo confirmación manual: VS Code no expone un indicador fiable de «terminal libre» para procesos restaurados. No se ejecutan comandos de prueba porque la API podría enviar `Ctrl+C` e interrumpir un proceso.
+**Diagnóstico sin enviar comandos:** `external_busy`, `recovery_reason`, `execution_phase`, `input_wait_hint` y `output_silent_seconds` describen actividad y esperas. Un aviso o periodo de silencio no demuestra bloqueo. La recuperación automática contrasta el estado con el runspace real de PowerShell, incluido el prompt vacío de PSReadLine. Las contraseñas, los puntos de interrupción y las líneas sin enviar siguen protegidos.
+
+
+
+**Recuperación automática segura:** los eventos de fin y las pruebas guardadas se complementan con una consulta de PowerShell en un runspace de diagnóstico separado. Solo se acepta el runspace principal abierto, disponible y fuera de un punto de interrupción. Un comando silencioso, un subshell o una espera de entrada siguen protegidos. Un evento de actividad durante la consulta invalida el resultado. No se envía ninguna orden al runspace de la terminal.
 
 Las terminales **de usuario y las principales automáticas** conservan su proceso cuando una ejecución supera el tiempo de espera. Mientras la ejecución siga activa, MCP rechaza nuevos comandos en esa terminal para impedir solapamientos. Si VS Code comunica la finalización, se desbloquea automáticamente.
 
-Cuando falte el evento de finalización, el panel puede mostrar **Tiempo agotado · proceso conservado**. Comprueba que el comando terminó o interrúmpelo tú mismo antes de seleccionar **Volver a habilitar MCP**. Este botón **no detiene el proceso**: solo autoriza que la cola MCP vuelva a utilizar la terminal. Confirmar prematuramente puede superponer comandos.
+Si falta el evento de finalización, la terminal puede mostrar **Tiempo agotado · proceso conservado**. MultiShell comprueba automáticamente su disponibilidad y libera los registros antiguos solo cuando verifica que está libre. **Comprobar disponibilidad** repite esa consulta sin confirmación manual ni interrupciones.
 
 Las terminales temporales de MCP tienen una política diferente: pueden cerrarse al agotar su timeout para evitar que una ejecución desconocida se solape con la siguiente. Si la integración con la terminal todavía no estaba disponible y el comando no comenzó, un timeout de la principal no debe destruirla.
 
 ### Después de recargar VS Code
 
-Si VS Code conserva las terminales físicas, MultiShell intenta reasociarlas según identificador, directorio y estado guardado. No crea terminales de usuario duplicadas. Las terminales recuperadas se reactivan automáticamente si hay una finalización confirmada o coinciden la identidad del proceso, el directorio y la evidencia de inactividad conservada. Las situaciones ambiguas siguen necesitando confirmación manual.
+Si VS Code conserva las terminales físicas, MultiShell reasocia sus identificadores y directorios sin crear duplicados. Reactiva las sesiones mediante eventos fiables, pruebas guardadas o inspección del runspace de PowerShell. Los procesos aún activos permanecen conservados.
 
 Una terminal de otro proyecto, con identificador duplicado o metadatos contradictorios, no debe adoptarse. Si VS Code ha cerrado realmente el proceso, la extensión no puede recuperarlo.
 
@@ -114,14 +118,30 @@ En 0.10.22, después de **Reload Window**, MultiShell gestiona una sola terminal
 El idioma sigue automáticamente la configuración de VS Code: español si está seleccionado y, para los demás idiomas, inglés. No hay selector manual en el panel.
 ## Recuperación automática mejorada en 0.10.22
 
-La extensión guarda una prueba de inactividad después de los cambios en las ejecuciones y periódicamente durante los periodos sin actividad. Tras una recarga, comprueba que la terminal física sigue siendo la misma (PID y directorio) y que no se conoce ningún comando pendiente. Si se cumple, reactiva MCP sin intervención; si no, conserva el botón de confirmación. **No envía teclas ni señales para averiguarlo.** El botón de recuperación tiene un icono de escudo y el control de salida automática un icono de salida, para distinguir sus funciones.
+La extensión guarda evidencia de inactividad y comprueba el estado de PowerShell automáticamente al restaurar o reintentar sesiones protegidas. El botón con escudo repite la comprobación; no autoriza un desbloqueo a ciegas. Si no puede verificarse el estado de un shell, se conserva la protección. Para tareas no interactivas puede emplearse `execute_isolated_command_code`, con variables y alias independientes.
 ## Protección de ejecución y restauración (0.10.22)
 
 - El estado de ejecución detectado por integración de shell impide enviar nuevas órdenes MCP a una terminal que tenga un comando manual activo; no se envía `Ctrl+C`.
 - Cancelar un elemento en cola no deja pasar órdenes posteriores hasta que terminen todas las anteriores.
-- Si falla la lectura de salida, la terminal sigue reservada hasta que VS Code notifique la finalización o la persona confirme manualmente que está libre.
+- Si falla la lectura, la terminal sigue reservada hasta obtener un evento de fin o una comprobación automática fiable de inactividad.
 - Solo se restauran terminales de usuario con datos persistentes de titularidad guardados. Las temporales no se convierten en `user` porque su nombre y directorio coincidan; sesiones heredadas sin datos suficientes quedan sin adoptar.
 - Una solicitud de creación desconectada se revierte siempre que pueda comprobarse que sigue siendo la operación pendiente; no se cierran terminales de usuario activas arbitrariamente.
-## Drenaje de salida tras finalización (0.10.25)
+## Drenaje de salida tras finalización (0.10.27)
 
 Si VS Code confirma que el comando terminó pero su lectura de salida no se cierra, MultiShell intenta drenarla durante **750 ms**. Si continúa abierta, libera la cola y devuelve `output_incomplete=true` junto con `truncated=true`. No libera una ejecución sin aviso de finalización ni interrumpe el proceso. Este cambio reduce timeouts causados por flujos de salida retenidos, pero no sustituye la validación real en Linux ni todas las configuraciones de PowerShell.
+
+## Conexión y recarga (0.10.28)
+
+Al recargar una ventana, el coordinador puede conservar su registro anterior durante un máximo de 12 segundos. La nueva instancia espera automáticamente a que caduque ese registro y vuelve a asociar la terminal original. Este reintento de registro está limitado a 15 segundos; una ventana que sigue activa conserva su titularidad.
+
+Si se corta la conexión durante una orden, la petición original puede devolver un error aunque el proceso continúe. Las órdenes en espera se cancelan y **las órdenes ya enviadas no se repiten automáticamente**. Comprueba el estado y el resultado antes de volver a solicitar una operación que modifique datos. La terminal principal o de usuario se reactiva cuando puede verificarse que su proceso está libre.
+
+Una consulta de descubrimiento a una ventana que no responde caduca en dos segundos; las otras ventanas continúan disponibles. Las cabeceras HTTP incompletas tienen un límite de diez segundos y los cuerpos de quince, con una comprobación cada segundo. Estos límites afectan a la recepción de la petición, no a la duración de una orden legítima ni al tiempo sin salida del proceso.
+
+## Operaciones canceladas y reconexión (0.10.29)
+
+La cancelación de una petición se propaga también a la creación temporal, al cierre y al cambio de alias. Antes de aplicar una operación pendiente se comprueba su cancelación; una aprobación de cierre que llega después de desconectar no cierra la terminal de usuario. Las autorizaciones locales siguen siendo obligatorias.
+
+Después de una reconexión, una respuesta de la conexión anterior se descarta: no debe cambiar el alias de una terminal nueva, borrar su registro ni hacerla aparecer desconectada. Si la conexión cambia durante una operación, consulta el estado actual antes de repetirla; una pérdida de respuesta no permite deducir si la operación llegó a ejecutarse.
+
+Cuando la extensión reinicia su gestor, las peticiones anteriores terminan y se retiran sus escuchadores. Conservar el proceso de una terminal no conserva las esperas del gestor anterior. Las órdenes que estaban en cola no se envían al reiniciar.
