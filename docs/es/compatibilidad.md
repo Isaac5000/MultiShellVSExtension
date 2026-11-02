@@ -2,7 +2,11 @@
 
 [English](../en/compatibility.md) · [Índice](../../README.md)
 
-MultiShell MCP 0.10.29 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
+MultiShell MCP 0.10.39 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
+
+Para obtener los nombres de las skills del proyecto y de Codex, usa `list_skill_names_code(shell_id="fallouttraduccion",scope="all")`. Si el conector de ChatGPT todavía no conoce esta herramienta, ejecuta la consulta de control `execute_shell_command_code(command="skills fallouttraduccion",cwd="@mcp")`. No envía órdenes a PowerShell. Para incluir las skills globales, activa `multi-shell-mcp.globalCodexSkills` previa autorización; está desactivado por defecto por seguridad. [Guía completa](skills.md).
+
+La versión 0.10.39 utiliza **solo el SDK MCP v2**, pero mantiene la compatibilidad de protocolo con los clientes de la era 2025 mediante `createMcpHandler` (`legacy: 'stateless'`). No exige migrar el cliente al SDK v2 para efectuar solicitudes MCP antiguas. El túnel sigue apuntando a `http://127.0.0.1:3000/mcp` y no necesita cambios de script o perfil; la comprobación integral sobre el túnel en ejecución queda pendiente.
 
 ## Herramientas actuales
 
@@ -17,6 +21,8 @@ Cuando el cliente MCP tiene actualizado su esquema, se utilizan las herramientas
 | `execute_shell_command_code` | Ejecutar un comando en el `shell_id` seleccionado |
 | `set_shell_alias_code` | Asignar o cambiar un alias |
 | `close_shell_code` | Cerrar una terminal; si es de usuario, requiere confirmación local |
+
+Las herramientas `list_skills_code`, `read_skill_code` y `read_skill_file_code` exponen Agent Skills del proyecto. También se publican recursos `skill://index.json` para clientes compatibles. Consulta la [guía de Agent Skills](skills.md).
 
 Las herramientas de lectura y edición de archivos trabajan dentro del directorio autorizado para la terminal seleccionada. Diagnósticos, símbolos y otras operaciones nativas de VS Code se ejecutan en la ventana propietaria.
 

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { MCPServer, ToolConfiguration } from './server';
+import {listWorkspaceSkills} from './tools/agent-skills';
 import { MultiWindowController, WindowRouter, getSecret } from './multi-window';
 import { MultiShellPanel } from './panel';
 import type { SavedIdleProof } from './shell-manager';
@@ -63,7 +64,8 @@ function config():{port:number;tools:ToolConfiguration;defaultEnabled:boolean;in
         defaultEnabled:cfg.get<boolean>('defaultEnabled')??false,
         interactiveAutoExit:cfg.get<boolean>('interactiveAutoExit')??true,
         tools:{
-            file:enabled.file??true,edit:enabled.edit??true,shell:enabled.shell??true
+            file:enabled.file??true,edit:enabled.edit??true,shell:enabled.shell??true,
+            globalSkills:cfg.get<boolean>('globalCodexSkills')??false
         }
     };
 }
@@ -163,7 +165,8 @@ async function start(context:vscode.ExtensionContext):Promise<void>{
 }
 /** Restart on port or tool-permission changes, restoring the working configuration on failure. */
 function sameTools(a:ToolConfiguration,b:ToolConfiguration):boolean{
-    return a.file===b.file && a.edit===b.edit && a.shell===b.shell;
+    return a.file===b.file && a.edit===b.edit && a.shell===b.shell &&
+        (a.globalSkills??false)===(b.globalSkills??false);
 }
 async function applyConfigurationChange(context:vscode.ExtensionContext):Promise<void>{
     if(applyingConfiguration){pendingConfigurationChange=true;return;}
@@ -190,7 +193,18 @@ async function applyConfigurationChange(context:vscode.ExtensionContext):Promise
                     await cfg.update('port',oldPort,vscode.ConfigurationTarget.Global);
                 }
                 if(!sameTools(requested.tools,oldTools)){
-                    await cfg.update('enabledTools',oldTools,vscode.ConfigurationTarget.Global);
+                    const changedPermissions=requested.tools.file!==oldTools.file||
+                        requested.tools.edit!==oldTools.edit||
+                        requested.tools.shell!==oldTools.shell;
+                    if(changedPermissions){
+                        await cfg.update('enabledTools',{
+                            file:oldTools.file,edit:oldTools.edit,shell:oldTools.shell
+                        },vscode.ConfigurationTarget.Global);
+                    }
+                    if((requested.tools.globalSkills??false)!==(oldTools.globalSkills??false)){
+                        await cfg.update('globalCodexSkills',oldTools.globalSkills??false,
+                            vscode.ConfigurationTarget.Global);
+                    }
                 }
             }
         }catch(rollbackError){
@@ -242,6 +256,114 @@ async function stop(preserveTerminals=false):Promise<void>{
     }
     refreshStatus();
 }
+/** User-invoked, read-only skill picker. Page through the complete catalog
+ * without treating different providers with the same name as one skill. */
+async function pickAvailableSkills():Promise<void>{
+    const spanish=vscode.env.language.toLowerCase().startsWith('es');
+    if(vscode.workspace.isTrusted===false){
+        vscode.window.showWarningMessage(spanish
+            ?'MultiShell MCP: confía en el proyecto antes de consultar skills.'
+            :'MultiShell MCP: trust the workspace before listing skills.');
+        return;
+    }
+    const workspace=vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    // An empty VS Code window must not scan the extension host's cwd as
+    // though it were an explicitly trusted project.
+    if(!workspace){
+        vscode.window.showWarningMessage(spanish
+            ?'MultiShell MCP: abre una carpeta de proyecto para consultar sus skills.'
+            :'MultiShell MCP: open a workspace folder before listing project skills.');
+        return;
+    }
+    const cfg=vscode.workspace.getConfiguration(SETTING);
+    if((cfg.get<Record<string,boolean>>('enabledTools')||{}).file===false){
+        vscode.window.showWarningMessage(spanish
+            ?'MultiShell MCP: la lectura de archivos está desactivada.'
+            :'MultiShell MCP: file reading is disabled.');
+        return;
+    }
+    for(;;){
+        const includeGlobal=cfg.get<boolean>('globalCodexSkills')??false;
+        const skills:ReturnType<typeof listWorkspaceSkills>['skills']=[];
+        const warnings:string[]=[];
+        let cursor:string|undefined;
+        const seenCursors=new Set<string>();
+        // A page is capped at 100 by the MCP catalog; the picker must not
+        // silently hide valid matches after the first hundred entries.
+        do{
+            const page=listWorkspaceSkills(workspace,{includeGlobal,cursor,limit:100});
+            skills.push(...page.skills);
+            warnings.push(...page.warnings.filter(w=>!w.startsWith('More skills available;')));
+            cursor=page.next_cursor;
+            if(!cursor){break;}
+            if(seenCursors.has(cursor)||skills.length>=4096){
+                warnings.push('Skill picker reached its catalog limit.');
+                break;
+            }
+            seenCursors.add(cursor);
+            // Avoid monopolizing the VS Code extension host on larger catalogs.
+            await new Promise<void>(resolve=>setImmediate(resolve));
+        }while(cursor);
+        if(warnings.length){logger.warn('Skill discovery warnings: '+warnings.slice(0,10).join('; '));}
+        const counts=new Map<string,number>();
+        for(const skill of skills){
+            const key=skill.name.toLowerCase();
+            counts.set(key,(counts.get(key)||0)+1);
+        }
+        const items=skills.map(skill=>({
+            label:'$(book) '+skill.name,
+            description:(skill.scope==='global'?'Codex · Global':
+                (spanish?'Proyecto':'Workspace')+' · '+skill.source)+' · '+skill.skill_path,
+            detail:skill.description,
+            name:skill.name,
+            skillPath:skill.skill_path,
+            duplicate:(counts.get(skill.name.toLowerCase())||0)>1,
+            enableGlobal:false
+        }));
+        if(!includeGlobal){
+            items.unshift({
+                label:'$(shield) '+(spanish?'Habilitar skills globales de Codex':'Enable global Codex skills'),
+                description:spanish?'Requiere autorizar la lectura de archivos personales':
+                    'Requires authorization to read personal skill files',
+                detail:'~/.agents/skills · ~/.codex/skills · ~/.codex/skills/.system',
+                name:'',skillPath:'',duplicate:false,enableGlobal:true
+            });
+        }
+        if(!items.length){
+            vscode.window.showInformationMessage(spanish
+                ?'MultiShell MCP: no hay skills disponibles en este proyecto.'
+                :'MultiShell MCP: no skills are available in this workspace.');
+            return;
+        }
+        const chosen=await vscode.window.showQuickPick(items,{
+            title:spanish?'MultiShell MCP · Skills disponibles':'MultiShell MCP · Available skills',
+            placeHolder:spanish?'Selecciona una skill para copiar su nombre o ruta':
+                'Select a skill to copy its name or unambiguous path',
+            matchOnDescription:true,
+            matchOnDetail:true
+        });
+        if(!chosen){return;}
+        if(chosen.enableGlobal){
+            const accept=spanish?'Habilitar lectura global':'Enable global reading';
+            const approved=await vscode.window.showWarningMessage(
+                spanish
+                    ?'Los clientes MCP conectados, incluso por túnel, podrán leer tus skills globales (también los scripts como archivos). No se ejecutarán automáticamente.'
+                    :'Connected MCP clients, including tunnel clients, will be able to read your global skills (including scripts as files). Scripts will not run automatically.',
+                {modal:true},accept);
+            if(approved===accept){
+                await cfg.update('globalCodexSkills',true,vscode.ConfigurationTarget.Global);
+                continue;
+            }
+            return;
+        }
+        // A bare name is convenient only when it identifies exactly one
+        // skill. Duplicates require the full skill_path for load_skill_code.
+        const selected=chosen.duplicate?chosen.skillPath:chosen.name;
+        await vscode.env.clipboard.writeText(selected);
+        vscode.window.showInformationMessage((spanish?'Skill copiada: ':'Skill copied: ')+selected);
+        return;
+    }
+}
 export async function activate(context:vscode.ExtensionContext):Promise<void>{
     extensionContext=context;
     deactivating=false;
@@ -249,6 +371,8 @@ export async function activate(context:vscode.ExtensionContext):Promise<void>{
     idleProofWrites=Promise.resolve();
     if(idleProofTicker){clearInterval(idleProofTicker);}
     idleProofTicker=undefined;
+    context.subscriptions.push(vscode.commands.registerCommand(
+        'multi-shell-mcp.listSkills',pickAvailableSkills));
     statusBar=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right,95);
     statusBar.command='multi-shell-mcp.toggleServer';
     context.subscriptions.push(statusBar);
@@ -270,7 +394,8 @@ export async function activate(context:vscode.ExtensionContext):Promise<void>{
         }));
     }
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event=>{
-        if(event.affectsConfiguration(SETTING+'.port') || event.affectsConfiguration(SETTING+'.enabledTools')){
+        if(event.affectsConfiguration(SETTING+'.port') || event.affectsConfiguration(SETTING+'.enabledTools') ||
+            event.affectsConfiguration(SETTING+'.globalCodexSkills')){
             void applyConfigurationChange(context);
         }
         if(event.affectsConfiguration(SETTING+'.interactiveAutoExit') &&

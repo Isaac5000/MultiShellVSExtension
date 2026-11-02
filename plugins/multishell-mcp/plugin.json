@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "multishell-mcp",
+  "version": "0.10.39",
+  "description": "Safe multi-window VS Code MCP workflows and Agent Skills discovery.",
+  "license": "MIT",
+  "keywords": [
+    "vscode",
+    "mcp",
+    "agents",
+    "skills",
+    "development"
+  ],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md"
+    }
+  }
+}

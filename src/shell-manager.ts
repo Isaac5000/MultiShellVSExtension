@@ -30,6 +30,8 @@ export interface ShellDescription {
     shell_id: string;
     initial_cwd: string;
     window_id?: string;
+    /** Stable, nonsecret fingerprint for the local MultiShell installation. */
+    machine_id?: string;
     alias?: string;
     busy: boolean;
     queued: number;

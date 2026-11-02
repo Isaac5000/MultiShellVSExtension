@@ -2,7 +2,13 @@
 
 [English](../en/usage.md) · [Índice](../../README.md)
 
-Comportamiento de **MultiShell MCP Server 0.10.29**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
+Comportamiento de **MultiShell MCP Server 0.10.39**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
+
+Abre **Ctrl+Mayús+P → MultiShell MCP: Mostrar skills disponibles** para consultar y copiar nombres, incluyendo las skills globales de Codex si autorizas su lectura. Por chat también puedes pedir `list_skill_names_code(shell_id="fallouttraduccion")` o, con el conector antiguo, `cwd="@mcp"` y `command="skills fallouttraduccion"`.
+
+Para descubrir skills del proyecto, consulta [Agent Skills](skills.md) y usa `list_skills_code` con la terminal seleccionada.
+
+En el panel, abre **Skills** para buscar por nombre o descripción en el proyecto de esta ventana. **Copiar para ChatGPT** prepara la instrucción con la ruta elegida y la terminal principal; pégala en tu chat conectado a MCP. Las solicitudes de creación de terminales están en el desplegable **Solicitudes**, justo bajo **Ventana actual** y antes de las pestañas. Las skills personales requieren su permiso de lectura existente.
 
 ## 1. Iniciar y seleccionar una terminal
 
@@ -20,7 +26,7 @@ El panel ofrece estado del coordinador o trabajador, puerto, ventana actual, lis
 | --- | --- | --- |
 | Principal | Se crea automáticamente por ventana | Se protege frente a cierres MCP y se intenta recuperar al recargar |
 | Temporal | `create_shell_code` | MCP puede crearla para trabajos auxiliares; su tipo siempre será `mcp` |
-| De usuario | `create_user_shell_code` o botón **Nueva** del panel | Requiere aceptar la solicitud en la pestaña **Solicitudes** del panel; tipo `user`, con recuperación persistente |
+| De usuario | `create_user_shell_code` o botón **Nueva** del panel | Requiere aceptar la solicitud en el desplegable **Solicitudes** del panel, bajo **Ventana actual**; tipo `user`, con recuperación persistente |
 
 ### Solicitar a la IA una terminal de usuario
 
@@ -28,7 +34,7 @@ Pide expresamente, por ejemplo:
 
 > Crea una terminal de usuario persistente llamada `pruebas` en un directorio independiente de este proyecto. Te autorizaré en VS Code. Después utiliza `shell=pruebas`.
 
-La IA enviará una petición mediante `create_user_shell_code` con un `shell_id`, una ruta de trabajo opcional (`cwd`) y, si hay varias ventanas, un `window_id`. **Todavía no existe ninguna terminal** en ese momento. La petición aparece en **Solicitudes** del panel local con ID, directorio y opción de compartir carpeta. Solo se crea si pulsas **Autorizar creación**; rechazar, cancelar o agotar el plazo no crea ninguna terminal.
+La IA enviará una petición mediante `create_user_shell_code` con un `shell_id`, una ruta de trabajo opcional (`cwd`) y, si hay varias ventanas, un `window_id`. **Todavía no existe ninguna terminal** en ese momento. La petición aparece en el desplegable **Solicitudes** del panel local con ID, directorio y opción de compartir carpeta. Solo se crea si pulsas **Autorizar creación**; rechazar, cancelar o agotar el plazo no crea ninguna terminal.
 
 Crear desde el panel también muestra aprobación local. No puede omitirse mediante parámetros no documentados de `create_shell_code` ni mediante la API interna del coordinador. **La IA no puede aceptar el aviso en tu nombre.**
 
@@ -108,7 +114,7 @@ La extensión reconoce comandos independientes `less`, `more`, `top`, `htop`, `m
 
 ## Cola de solicitudes de terminales de usuario
 
-En lugar de una notificación modal inmediata, las peticiones de `create_user_shell_code` aparecen en la pestaña **Solicitudes** del panel de la ventana propietaria, con su identificador, directorio y opción de compartir carpeta. Pulsa **Autorizar creación** o **Rechazar**. La solicitud tiene una duración limitada, desaparece si el cliente cancela o se detiene el servidor y nunca crea una terminal antes de tu aprobación.
+En lugar de una notificación modal inmediata, las peticiones de `create_user_shell_code` aparecen en el desplegable **Solicitudes** del panel, bajo **Ventana actual** de la ventana propietaria, con su identificador, directorio y opción de compartir carpeta. Pulsa **Autorizar creación** o **Rechazar**. La solicitud tiene una duración limitada, desaparece si el cliente cancela o se detiene el servidor y nunca crea una terminal antes de tu aprobación.
 
 La creación desde el formulario del panel se autoriza al pulsar **Crear terminal**, sin abrir una ventana modal adicional. Se usa una autorización de un solo uso, ligada al ID, directorio y permiso de carpeta compartida. El cierre de terminales de usuario conserva su autorización independiente.
 ## Recuperación al recargar e idioma

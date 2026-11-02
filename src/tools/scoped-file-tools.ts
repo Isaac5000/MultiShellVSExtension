@@ -2,8 +2,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import {randomUUID} from 'crypto';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {ToolRegistry} from './tool-registry';
+import type {CallToolResult} from '@modelcontextprotocol/server';
 import { ShellApi } from '../shell-api';
 
 const MAX_FILES = 3000;
@@ -170,7 +170,7 @@ async function list(s: ShellApi, id: string, file: string, recursive: boolean) {
 }
 const shellId = z.string().describe('REQUIRED shell ID or short alias (e.g. 1 or minecraft). Each operation must specify it.');
 const relative = z.string().describe('Relative file path inside the selected shell initial working directory. No traversal.');
-export function registerScopedFileTools(server: McpServer, s: ShellApi, permissions = {file:true,edit:true}) {
+export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permissions = {file:true,edit:true}) {
     if (permissions.file) {
     server.tool('list_files_code','List files ONLY under an explicit shell_id root.',
         { shell_id: shellId, path: relative.optional().default('.'), recursive: z.boolean().optional().default(false) },

@@ -6,7 +6,7 @@
 
 ## Español
 
-**Código fuente 0.10.29 · VS Code 1.99 o posterior · Licencia MIT**
+**Código fuente 0.10.39 · VS Code 1.99 o posterior · Licencia MIT**
 
 MultiShell MCP Server conecta varias ventanas y terminales de Visual Studio Code a un servidor MCP local. Los comandos siempre seleccionan una terminal por su ID o alias. Las terminales pueden trabajar simultáneamente, con una cola FIFO independiente para cada una.
 
@@ -38,6 +38,24 @@ El repositorio incluye `.gitattributes` para mantener los archivos de texto con 
 
 La herramienta `execute_isolated_command_code` ejecuta órdenes no interactivas en un proceso independiente, con el directorio de la terminal seleccionada y sin enviar teclas a esa terminal. No comparte alias, variables de sesión ni procesos persistentes. Esta vía evita los bloqueos de la integración de VS Code en comprobaciones y compilaciones.
 
+### Agent Skills
+
+MultiShell puede descubrir y leer skills de proyecto en `.agents/skills/`, `.github/skills/` y `.claude/skills/`. Las herramientas `list_skills_code`, `read_skill_code` y `read_skill_file_code` requieren un `shell_id` explícito, respetan el ámbito del proyecto y **nunca ejecutan scripts automáticamente**. Los clientes compatibles también pueden utilizar el recurso `skill://index.json`. Se incluye una skill propia para Codex en `.agents/skills/multishell-mcp/`. Esta capacidad necesita el permiso de lectura de archivos y no instala skills nativas en ChatGPT por sí sola.
+
+Ahora también lee **skills globales de Codex** (previa autorización) sin copiarlas al repositorio. La lista de nombres está disponible en **Ctrl+Mayús+P → MultiShell MCP: Mostrar skills disponibles**, en la herramienta `list_skill_names_code`, o desde el conector heredado con `cwd="@mcp"` y `command="skills fallouttraduccion"`. El acceso global está desactivado por defecto en `multi-shell-mcp.globalCodexSkills` porque también puede exponer los archivos a clientes remotos conectados.
+
+**Desde 0.10.33, las skills se leen en la ventana propietaria**, no en el disco del coordinador. `list_windows_code` identifica el `machine_id` y el `window_id`; las skills iguales en distintas ventanas se mantienen separadas. La conexión entre ventanas sigue siendo local a cada máquina: para usar varios equipos desde ChatGPT, conecta cada servidor MCP de forma independiente y segura.
+
+**Mejora 0.10.37:** el selector de la paleta recorre todas las páginas, muestra las descripciones y copia rutas específicas cuando dos skills comparten nombre. La consulta `list_skill_names_code` filtra por nombre antes de paginar, sin perder coincidencias por descripciones ajenas. El selector necesita una carpeta de proyecto abierta.
+
+**Nuevo en 0.10.39:** toda la lógica MCP utiliza exclusivamente el SDK oficial v2. Una única instancia por solicitud admite clientes antiguos (`initialize`, protocolos 2025) y modernos (`server/discover`, protocolo 2026) sin instalar el SDK v1. Se conservan `127.0.0.1:3000/mcp`, los permisos, el túnel externo y los comportamientos de la interfaz. La compatibilidad de protocolos no implica activar automáticamente un plugin en ChatGPT. Consulta [Compatibilidad MCP](docs/es/compatibilidad.md).
+
+**Nuevo en 0.10.38:** en la pestaña **Skills**, cada fila muestra el nombre y su ruta justo debajo, siempre visibles. El botón de copiar queda a la derecha del nombre; el desplegable **Descripción**, situado debajo de la ruta, comienza cerrado. Los detalles abiertos se conservan al cargar más resultados.
+
+Consulta la [guía de Agent Skills](docs/es/skills.md).
+
+**Nuevo en 0.10.33:** soporte oficial del protocolo MCP `2026-07-28`, con `server/discover`, `skills/list`, `skills/get` y recursos verificables por SHA-256. Los clientes antiguos siguen funcionando. La distribución también incluye un [plugin portable de ChatGPT y Codex](docs/es/skills.md) con marketplace local; la instalación se autoriza por separado.
+
 ### Instalación y compilación
 
 Para compilar el código fuente necesitas Node.js 22.13 o posterior y npm. El empaquetador usado es `@vscode/vsce` 4.1.0:
@@ -47,9 +65,10 @@ npm ci
 npm run test:multishell
 npm run lint
 npm run package
+npm run package:plugin
 ```
 
-Genera `multi-shell-mcp-server-0.10.29.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
+Genera `multi-shell-mcp-server-0.10.39.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
 
 La dirección local predeterminada es `http://127.0.0.1:3000/mcp`.
 
@@ -57,7 +76,7 @@ La dirección local predeterminada es `http://127.0.0.1:3000/mcp`.
 
 Solo se inicia en espacios de trabajo de confianza. Los comandos se ejecutan con los permisos del usuario; el servidor local no es una zona aislada y no debe exponerse directamente a Internet. Tunnel Client y sus credenciales se administran por separado.
 
-La versión 0.10.29 propaga la cancelación a la creación y cierre de terminales, descarta respuestas de conexiones anteriores y libera las esperas del gestor al reiniciarse. Las regresiones incluyen operaciones interrumpidas durante la reconexión. Véase [Validación](docs/es/validacion.md) para los resultados y las comprobaciones reales pendientes.
+La versión 0.10.36 limita los archivos al interior de la skill seleccionada, verifica las lecturas concurrentes y calcula solo los manifiestos de la página solicitada. Evita catálogos repetidos para terminales de una misma carpeta y ventana. Consulta [Validación](docs/es/validacion.md) para resultados y límites.
 
 ### Documentación en español
 
@@ -65,6 +84,7 @@ La versión 0.10.29 propaga la cancelación a la creación y cierre de terminale
 - [Uso y terminales](docs/es/uso.md)
 - [Compatibilidad con conectores MCP](docs/es/compatibilidad.md)
 - [Pruebas y diagnóstico](docs/es/validacion.md)
+- [Uso de Agent Skills](docs/es/skills.md)
 - [Historial de cambios](docs/es/historial.md)
 
 ### Origen y licencia
@@ -75,7 +95,7 @@ Adaptación de [juehang/vscode-mcp-server](https://github.com/juehang/vscode-mcp
 
 ## English
 
-**Source code 0.10.29 · VS Code 1.99 or later · MIT license**
+**Source code 0.10.39 · VS Code 1.99 or later · MIT license**
 
 MultiShell MCP Server connects several Visual Studio Code windows and terminals to a local MCP server. Commands always target a terminal by ID or alias. Terminals can run in parallel, with an independent FIFO command queue per terminal.
 
@@ -107,6 +127,24 @@ The repository now includes `.gitattributes` to keep text files on LF across Win
 
 The `execute_isolated_command_code` tool runs non-interactive commands in a separate OS process using the selected shell's directory without writing to that terminal. It does not inherit terminal session variables, aliases or persistent processes. Use it for builds and checks that might confuse VS Code shell integration.
 
+### Agent Skills
+
+MultiShell can discover and read workspace skills from `.agents/skills/`, `.github/skills/`, and `.claude/skills/`. The `list_skills_code`, `read_skill_code`, and `read_skill_file_code` tools require an explicit `shell_id`, stay within its workspace, and **never execute bundled scripts automatically**. Compatible clients can also consume `skill://index.json`. A dedicated Codex skill is provided at `.agents/skills/multishell-mcp/`. File-read permission is required; this does not automatically install native ChatGPT skills.
+
+MultiShell can also read **global Codex skills** in place after explicit approval. Find their names using **Ctrl+Shift+P → MultiShell MCP: List available skills**, `list_skill_names_code`, or the legacy `cwd="@mcp"`, `command="skills fallouttraduccion"` control query. Global access is off by default through `multi-shell-mcp.globalCodexSkills`, since remote MCP clients could otherwise read those files.
+
+**Since 0.10.33, skill reads run in the owning VS Code worker**, not on the hub machine. `list_windows_code` exposes the installation `machine_id` and `window_id`, and same-named skills in different windows are kept distinct. Window networking remains local to each machine; connect each machine's MCP server separately and securely for multi-computer workflows.
+
+**Improved in 0.10.37:** the Command Palette picker scans every catalog page, shows descriptions and copies exact paths for duplicate names. `list_skill_names_code` filters by name before pagination, avoiding false empty pages caused by matching descriptions. The picker requires an open workspace folder.
+
+**New in 0.10.39:** all MCP implementation code uses only the official SDK v2. One server factory handles older clients (`initialize`, 2025 protocols) and modern clients (`server/discover`, 2026 protocol) without installing SDK v1. The `127.0.0.1:3000/mcp` endpoint, permissions, external tunnel contract, and interface remain unchanged. Protocol compatibility does not automatically activate a ChatGPT plugin. See [MCP compatibility](docs/en/compatibility.md).
+
+**New in 0.10.38:** each **Skills** row shows the name and the path immediately below it, both always visible. The copy icon stays to the right of the name; the **Description** disclosure below the path starts collapsed. Expanded descriptions remain open when additional results load.
+
+See the [Agent Skills guide](docs/en/skills.md).
+
+**New in 0.10.33:** official MCP `2026-07-28` support with `server/discover`, `skills/list`, `skills/get`, and SHA-256-verifiable skill resources. Older MCP clients remain supported. A [portable ChatGPT/Codex plugin](docs/en/skills.md) with a repo-local marketplace is provided for user-approved installation.
+
 ### Installation and building
 
 Building from source requires Node.js 22.13 or later and npm, using `@vscode/vsce` 4.1.0:
@@ -116,9 +154,10 @@ npm ci
 npm run test:multishell
 npm run lint
 npm run package
+npm run package:plugin
 ```
 
-Generate `multi-shell-mcp-server-0.10.29.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
+Generate `multi-shell-mcp-server-0.10.39.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
 
 The default local endpoint is `http://127.0.0.1:3000/mcp`.
 
@@ -126,7 +165,7 @@ The default local endpoint is `http://127.0.0.1:3000/mcp`.
 
 The VS Code workspace must be trusted. Commands run with the operating system user's permissions; the local server is not a sandbox and must not be exposed directly to the internet. Tunnel Client and its credentials are managed separately.
 
-Version 0.10.29 propagates cancellation to terminal creation and closure, rejects stale connection responses, and releases old manager waits during restart. Regressions cover interrupted operations across reconnection. See [Validation](docs/en/validation.md) for results and pending target checks.
+Version 0.10.36 confines files to the selected skill, checks concurrent reads, and builds manifests only for the requested page. It avoids duplicate catalogs for terminals sharing a root in the same window. See [Validation](docs/en/validation.md) for results and limits.
 
 ### English documentation
 
@@ -134,6 +173,7 @@ Version 0.10.29 propagates cancellation to terminal creation and closure, reject
 - [Usage and terminals](docs/en/usage.md)
 - [MCP connector compatibility](docs/en/compatibility.md)
 - [Testing and troubleshooting](docs/en/validation.md)
+- [Using Agent Skills](docs/en/skills.md)
 - [Release history](docs/en/changelog.md)
 
 ### Origin and license

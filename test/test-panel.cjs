@@ -140,8 +140,10 @@ async function main() {
   panel.resolveWebviewView(view);
   await wait(30);
   assert.match(view.webview.html, /id="shellForm"/);
-  assert.match(view.webview.html, /id="tabRequests"/);
-  assert.match(view.webview.html, /id="requestsPage"/);
+  assert.match(view.webview.html, /id="tabSkills"/);
+  assert.match(view.webview.html, /<details class="requests-disclosure"/);
+  assert.ok(view.webview.html.indexOf('id="localWindow"')<view.webview.html.indexOf('id="requestsDisclosure"'));
+  assert.ok(view.webview.html.indexOf('id="requestsDisclosure"')<view.webview.html.indexOf('id="tabShells"'));
   assert.match(view.webview.html, /id="windowInteractive"/);
   assert.equal(sent.findLast(m=>m.type==='state').snapshot.requests.length,1);
   assert.match(view.webview.html, /media\/panel.js/);

@@ -4,6 +4,7 @@ node_modules/
 .vscode/
 .vscode-test/
 *.vsix
+multi-shell-mcp-plugin-*.zip
 *.log
 backups/
 scripts/*-once.cjs

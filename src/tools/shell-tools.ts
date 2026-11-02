@@ -1,5 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {ToolRegistry} from './tool-registry';
+import type {CallToolResult} from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { ShellApi } from '../shell-api';
 
@@ -11,7 +11,7 @@ function errorOf(e: unknown): CallToolResult {
 }
 
 /** Every operation is explicitly named: no default terminal or inferred ChatGPT conversation. */
-export function registerShellTools(server: McpServer, shells: ShellApi, requestSignal?: AbortSignal): void {
+export function registerShellTools(server: ToolRegistry, shells: ShellApi, requestSignal?: AbortSignal): void {
     server.tool('create_shell_code',
         'Create a TEMPORARY MCP-owned terminal for parallel work, NOT a persistent user terminal. A unique shell_id is required. Use a separate Git worktree for concurrent edits.',
         {

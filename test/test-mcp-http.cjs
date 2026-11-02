@@ -64,7 +64,11 @@ async function main(){
    const names=tools.result.tools.map(t=>t.name);
    assert.ok(names.includes('create_shell_code')&&names.includes('execute_shell_command_code'));
    assert.ok(names.includes('execute_isolated_command_code'),'Noninteractive isolated execution must be exposed');
-   assert.equal(names.length,19,'Expected seven shell, eight scoped file and four native VSCode tools');
+   assert.equal(names.length,25,'Expected seven shell, eight scoped file, four native VSCode and six Agent Skills tools');
+   assert.ok(names.includes('list_skill_names_code'),'Quick skill name listing must be exposed');
+   for(const name of ['list_skills_code','read_skill_code','read_skill_file_code']){
+     assert.ok(names.includes(name),'Required Agent Skills tool missing: '+name);
+   }
    assert.ok(names.includes('create_user_shell_code'),'Persistent user terminal creation must require a separate approval tool');
    const call=async(name,args)=> {
       const r=await rpc('tools/call',{name,arguments:args});

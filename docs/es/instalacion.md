@@ -2,7 +2,7 @@
 
 [English](../en/installation.md) · [Índice](../../README.md)
 
-Guía vigente para **MultiShell MCP Server 0.10.29**. Requiere **Visual Studio Code 1.99 o posterior**.
+Guía vigente para **MultiShell MCP Server 0.10.39**. Requiere **Visual Studio Code 1.99 o posterior**.
 
 ## Instalar o actualizar desde VSIX
 

@@ -3,7 +3,7 @@
   "icon": "media/logo.png",
   "displayName": "MultiShell MCP Server",
   "description": "Multi-window VSCode MCP server with bilingual terminal panel, scoped shells and legacy connector support",
-  "version": "0.10.29",
+  "version": "0.10.39",
   "publisher": "local-multishell",
   "license": "MIT",
   "engines": {
@@ -36,6 +36,11 @@
           "type": "boolean",
           "default": true,
           "description": "%multiShell.interactiveAutoExitDesc%"
+        },
+        "multi-shell-mcp.globalCodexSkills": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow connected MCP clients, including remote tunnels, to discover and READ the signed-in OS user's global Codex skills from ~/.agents/skills, ~/.codex/skills and ~/.codex/skills/.system. Off by default for privacy; scripts are never run automatically."
         },
         "multi-shell-mcp.enabledTools": {
           "type": "object",
@@ -70,6 +75,10 @@
       {
         "command": "multi-shell-mcp.showServerInfo",
         "title": "%multiShell.info%"
+      },
+      {
+        "command": "multi-shell-mcp.listSkills",
+        "title": "%multiShell.listSkills%"
       }
     ],
     "viewsContainers": {
@@ -102,11 +111,14 @@
     "test:connection": "node --expose-gc test/connection-soak.cjs",
     "test:windows": "node scripts/run-vscode-connection-tests.cjs",
     "package": "vsce package --allow-missing-repository --no-rewrite-relative-links",
+    "package:plugin": "node scripts/package-plugin.cjs",
+    "package:all": "npm run package && npm run package:plugin",
     "test:multishell": "npm run compile && node scripts/bundle.cjs && node scripts/run-tests.cjs",
     "test:panel": "node test/test-panel.cjs && node test/test-panel-layout.cjs",
     "bundle": "npm run compile && node scripts/bundle.cjs"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
     "@types/express": "^4.17.21",
     "@types/node": "20.x",
     "@types/vscode": "^1.99.0",
@@ -116,11 +128,13 @@
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",
     "proxyquire": "^2.1.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "yazl": "^2.5.1"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.10.1",
+    "@modelcontextprotocol/server": "^2.4.0",
     "express": "^4.18.3",
+    "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "overrides": {

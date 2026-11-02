@@ -2,7 +2,9 @@
 
 [Español](../es/validacion.md) · [Index](../../README.md)
 
-Reference version: **MultiShell MCP Server 0.10.29**. Validation includes compilation, ESLint, npm audit, regressions, HTTP load, and real VS Code windows with isolated profiles. Current results and their limits are recorded below; local tests do not establish external tunnel continuity.
+Reference version: **MultiShell MCP Server 0.10.37**. Validation includes compilation, ESLint, npm audit, regressions, HTTP load, and real VS Code windows with isolated profiles. Current results and their limits are recorded below; local tests do not establish external tunnel continuity.
+
+Agent Skills regressions cover `SKILL.md` parsing, YAML metadata, multi-window scoping, path safety, `skill://index.json` resources, and read permissions. See [Agent Skills](skills.md).
 
 ## Automated tests
 
@@ -190,3 +192,103 @@ To repeat, run `npm run bundle`, then the three scripts `test:vscode`, `test:win
 - Additional load for this revision: **15,444 commands in 60 seconds**, 25 worker reconnects and 10 coordinator restarts; no unexpected errors or retained queues/controllers. Latency p95 39 ms, p99 50 ms, maximum 86 ms. Retained heap grew 5,696,824 bytes after requesting garbage collection. Compiled modules match the report hashes.
 
 These checks are automated; even real VS Code tests do not replace complete manual panel acceptance. Coverage percentage was not measured. Native Linux, suspend/resume, and actual external tunnel outages remain unverified. Previous 0.10.28 results remain historical and are not attributed to this revision.
+## Agent Skills verification in 0.10.30 — November 2, 2026
+
+- `npm run test:multishell`: **68/68 passing suites**, including real HTTP MCP protocol, `skill://index.json`, YAML metadata, three skill search locations, two-workspace isolation, traversal and size limits.
+- `npm run lint`: zero warnings; `npm audit --audit-level=low`: **0 known vulnerabilities**.
+- `npm run package`: `multi-shell-mcp-server-0.10.30.vsix` built and inspected, **25 packaged files**, including ES/EN guides and the runtime bundle. Development `.agents/` and `node_modules` are not packaged.
+- `git --no-pager diff --check`: passed. The repository's `.agents/skills/multishell-mcp` example is tested.
+
+**Limit:** real installed-extension checks for this release (window reload, native skill consumers, external tunnel) have not yet been rerun. Historical live VS Code results below belong to earlier releases.
+
+## Validation of 0.10.31 — Official MCP Skills and portable plugin
+
+- `npm run test:multishell`: **72/72 passing suites**, including TypeScript compilation and bundling. Coverage includes the official MCP v2 client negotiating `2026-07-28`, `server/discover`, `skills/list`, `skills/get`, `resources/read`, pagination, SHA-256, resource limits and multi-window isolation.
+- Legacy MCP client initialization remains compatible; prior shell, permission, queue, cancellation and recovery regressions still pass.
+- `npm run lint`: **zero errors or warnings**; `npm audit --audit-level=low`: **zero known vulnerabilities**.
+- The portable plugin contains its manifests, repository-local marketplace, setup skill and operational MultiShell skill. Installation requires the user's approval.
+- `npm run package:all` builds a VSIX installer and a separate plugin ZIP; packaging checks ensure development directories and loose dependencies are not included.
+
+**Pending manual acceptance:** installing v0.10.31 in a real VS Code window, native plugin recognition and activation in a ChatGPT/Codex account, external secure-tunnel connectivity and Linux checks. A local `127.0.0.1` URL is not reachable from cloud-hosted ChatGPT Work.
+
+## Validation of 0.10.32 — Global Codex Skills
+
+- TypeScript compilation and bundling passed. `node scripts/run-tests.cjs`: **74/74 passing suites**, including new global skill and quick name-list tests.
+- `test/test-global-codex-skills.cjs` checks all three Codex skill directories, filters, duplicate names, opt-in, reference reading, contained symlinks and path traversal rejection.
+- `test/test-global-skills-mcp.cjs` checks `list_skill_names_code`, the legacy `cwd="@mcp"` shortcut, file permission enforcement and lack of an implicit default shell.
+- The bundled extension activation regression checks the new VS Code Command Palette action and copying a skill name.
+- A real directory scan on this Windows installation returned **14 valid personal Codex skills with no warnings**. No skill was copied into the extension or to another workspace.
+
+**Pending:** user acceptance after installing the updated VSIX and live ChatGPT remote-connector validation. Real PowerShell 7 integration harnesses require `pwsh.exe`, which was unavailable in the previous environment check.
+
+## Validation 0.10.33 — Skills owned by windows and machine origin
+
+- `node scripts/run-tests.cjs`: **75/75 passing suites** after TypeScript compilation, including the new `test/test-skills-window-routing.cjs`.
+- The new regression sets up two windows with separate project roots, two simulated user homes, distinct global read permissions and identically named skills. It checks legacy and modern MCP tools/resources and rejects requests to a disconnected owner.
+- The hub's stored paths are deliberately replaced with non-existent paths, proving reads are performed in the owning worker rather than accidentally using the hub's local files.
+- Window metadata includes `window_id` and the registered `machine_id`; same-named skills from different windows remain separate.
+
+**Limit:** these tests simulate separate machine filesystems; they are not actual network connections between computers. Worker networking remains limited to `127.0.0.1`. Remote federation and installation in a user's real client need separate validation.
+
+## Skill audit of 0.10.33 and fixes in 0.10.34 — November 2, 2026
+
+Baseline 0.10.33 passed its **75/75 suites**, but new regressions reproduced five access/discovery weaknesses: global skill internal links leaving the selected skill, file growth after size validation, stale frontmatter in a new manifest, building manifests outside the requested page, and duplicate catalogs for terminals sharing a window and root.
+
+In 0.10.34, `npm run test` passes **81/81 suites**, including compilation and bundling. `npm run lint` and the full npm audit finish without errors or known vulnerabilities. The six new regressions failed before the fixes and pass afterward.
+
+- Privacy testing uses a synthetic home and a Windows directory link, without reading real credentials. Authorized installation links inside the home remain supported; internal links outside the selected skill are rejected.
+- File-growth testing modifies a file after its size check and verifies rejection and descriptor cleanup. Manifest consistency testing changes `SKILL.md` between reading metadata and constructing the manifest.
+- With 45 instrumented skills, the first page builds **20 manifests instead of 45**. Three pages build 20, 20, and 5; invalid cursors build none. This measures work performed, not latency differences between machines.
+- Four terminals representing three distinct owner-window/root pairs produce three queries and entries; another window with the same path remains separate.
+- `npm run test:vscode`: **15/15 checks** in real VS Code. Two new cases verify owner-worker discovery and reading, disabled global access, and modern manifests whose two resources match SHA-256 and byte size.
+- A third new real VS Code check and `test-modern-legacy-selectors` exercise cached legacy schemas through the official modern MCP client: `@shell:` diagnostics, `@mcp` controls, no terminal execution for discovery, permissions, and rejection of mismatched routing headers. The same defect was observed through the active version 33 connector.
+- `npm run test:windows`: **6/6 scenarios** with two real windows, including idle/busy primary reload, PID preservation, and automatic recovery.
+
+The plugin and repository workflow skills remain synchronized. These tests are automated, including real VS Code checks; they do not establish native plugin installation or activation in a ChatGPT/Codex account. Native Linux, the external tunnel, slow network drives, and complete manual acceptance remain unverified. Coverage percentage was not measured.
+
+## Skills panel 0.10.36 — November 2, 2026
+
+- `npm run lint`: no errors or warnings. `npm run test`: **83/83 suites**, including compilation and bundling. The new panel suite covers 84 entries, description search, pagination, duplicates, exact paths, offline discovery, revoked permissions and zero terminal execution.
+- Chromium UI with synthetic data: **15 interaction checks**, including stale responses, focus preservation, keyboard navigation and terminal approvals. English labels and absence of horizontal overflow at 240, 280 and 330 pixels were also checked.
+- `npm run test:vscode`: **15/15 automated checks** in real VS Code with an isolated profile, including terminal recovery and MCP skill integrity. This does not establish manual acceptance of the new sidebar inside your usual window.
+- `npm audit --audit-level=low`: 0 known vulnerabilities. Coverage was not measured. Pending: visual acceptance in a regular VS Code window, clipboard and remote ChatGPT loading, tunnel continuity and native Linux.
+
+## Simple skill workflow 0.10.35
+
+The `test-skill-easy-workflow` regression uses real HTTP, the owning worker, and MCP v1/v2 clients. Its 121-skill catalog checks description search beyond entry 100, nonduplicated pages, loading by name, ambiguous-name candidates, exact-path selection, denied global access, and zero terminal commands. It also checks modern discovery includes entries beyond 100.
+
+Real VS Code checks are distinct from this API test with simulated terminals. Native Linux, network drives, and native activation in a remote client remain unverified.
+
+## Validation 0.10.37 — Skill audit and VS Code picker
+
+- Graphify structurally scanned 18 files in `src/` (310 nodes and 897 edges) without LLM extraction. The graph was created outside the repository in a temporary directory.
+- `node scripts/run-tests.cjs`: **84/84 suites passed** after compiling and rebuilding `dist/extension.js`. The new `test-skill-name-filter.cjs` includes more than 100 description matches and a later name match, through a real owner worker and HTTP MCP tool call.
+- `test-bundled-startup.cjs` verifies results beyond the first 100 entries, exact paths for duplicate names, descriptions and locale in the picker, and no fallback to the extension process directory when no project is open.
+- ESLint passed; `npm audit --audit-level=low` reported **0 known vulnerabilities**; `git diff --check` passed.
+- The active skills guides now validate current installer references to prevent stale distribution instructions.
+
+**Remaining acceptance:** install the new version in real VS Code and exercise the picker with real windows, separate computers and Linux. Regression tests do not establish native plugin compatibility with every client or absolute terminal reliability.
+
+## Validation 0.10.38 — Compact Skills layout
+
+- `npm run test`: **85/85 passing suites**, including the new disclosure regression. ESLint passed and npm reported 0 known vulnerabilities.
+
+- `test/test-panel-skill-disclosure.cjs`: executes the real panel renderer against a simulated DOM. It verifies always-visible paths beneath skill names, initially collapsed descriptions, independent right-hand copy buttons, and retained open state while additional results load.
+- `test/test-panel-layout.cjs` and `test/test-panel-skills.cjs`: check accessibility structure, search, pagination, permission boundaries, and copied instructions scoped to the correct terminal.
+- Controls use native `details/summary` with keyboard interaction, VS Code localized labels, and safe `textContent` instead of unsanitized HTML.
+
+**Pending:** manual visual acceptance in installed VS Code, particularly at very narrow sidebar widths and on Linux.
+
+## Validation 0.10.39 — Single MCP SDK v2 implementation
+
+- `node scripts/run-tests.cjs`: **88/88 suites passed** in the final regression run, covering both protocol eras, cancellations, reconnections, permissions and Agent Skills.
+- ESLint and TypeScript compilation passed. `npm audit --audit-level=low` found 0 known vulnerabilities; `git diff --check` was also checked.
+- Request cancellation handles closure of the HTTP response and underlying TCP connection before queued operations execute.
+
+- The server uses only `@modelcontextprotocol/server`, with no direct `@modelcontextprotocol/sdk` dependency or imports in source.
+- `test/test-sdk-v2-migration.cjs` checks official clients from both protocol eras, equivalent tools/resources, mandatory modern `resultType`, HTTP origin restrictions, permissions, and request cleanup.
+- `test/test-connection-protocol.cjs` exercises the legacy initialization era with 40 clients, 220 operations, malformed requests and cleanup, while modern `server/discover` and SHA-256 verified skills remain supported.
+- The endpoint remains `127.0.0.1:3000/mcp` with `legacy: 'stateless'`. Tunnel scripts and binaries have not been modified.
+- `test-global-skills-mcp.cjs` covers v2's JSON-RPC errors for unregistered tools while preserving window isolation and local permissions.
+
+**Pending acceptance:** an end-to-end live tunnel test and manual acceptance after installing the VSIX into VS Code. Automated tests alone do not verify those scenarios.

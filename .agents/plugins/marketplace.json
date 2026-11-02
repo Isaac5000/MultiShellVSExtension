@@ -1,0 +1,20 @@
+{
+  "name": "multishell-local",
+  "interface": {
+    "displayName": "MultiShell MCP Local"
+  },
+  "plugins": [
+    {
+      "name": "multishell-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/multishell-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

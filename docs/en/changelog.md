@@ -2,6 +2,93 @@
 
 [Versión en español](../es/historial.md) · [Project index](../../README.md)
 
+## 0.10.39 — Complete migration to MCP SDK v2
+
+- Removed the SDK v1 direct dependency, legacy HTTP transport and legacy server registration implementation.
+- A single `@modelcontextprotocol/server` factory serves both 2025 and 2026 protocol eras through `127.0.0.1:3000/mcp` using `createMcpHandler` with `legacy: 'stateless'`.
+- Preserved legacy `@mcp` command shortcuts, per-window skills, permissions, Host/Origin HTTP restrictions, cancellation and request cleanup.
+- Modern tool responses now explicitly include `resultType`, `ttlMs` and `cacheScope`. Disabled tools are rejected under either protocol era.
+- Migrated the legacy client regression to SDK v2's legacy mode and added dual-era tests covering matching tools/resources, modern metadata and absence of v1 imports.
+- The tunnel launcher, profile and executable remain unchanged. No **Skills** UI changes.
+
+## 0.10.38 — Compact, expandable Skills entries
+
+- Each skill shows its **name with its path directly underneath**, always visible. Only the description starts collapsed and opens via the keyboard-accessible “Description” disclosure.
+- The compact copy icon sits **to the right of the skill name**, outside the disclosure. Long paths visually truncate with a full hover tooltip, and copying does not toggle the description.
+- Open descriptions survive pagination and same-window updates, and reset when the workspace or permission context changes.
+- Reduced vertical spacing, retained access to full text, narrow-sidebar support, VS Code theme styles and ES/EN localization.
+- Added a regression that executes the actual panel renderer against a simulated DOM and checks independent controls, retained state, permissions, and accessibility.
+
+## 0.10.37 — More reliable skill picker and name searches
+
+- Structural audit of 18 TypeScript source files with Graphify (310 nodes and 897 edges), with temporary graph output outside the repository.
+- `list_skill_names_code` now filters by name **before pagination**, preventing description-only matches from hiding later matching skill names.
+- The VS Code Command Palette picker traverses all catalog pages, displays descriptions and copies exact skill paths when names are duplicated.
+- The picker honors the VS Code UI language and no longer treats the extension host working directory as a project when no workspace folder is open.
+- Regression coverage for over 100 skills, misleading description matches, duplicate names and empty VS Code windows. Existing file permissions and window ownership are preserved.
+- Updated active guides and installer references to match this release.
+
+## 0.10.36 — Skill browser in each window's sidebar
+
+- The Skills tab searches names and descriptions, filters by scope and loads results in pages of 40.
+- Each skill shows its description and path; “Copy for ChatGPT” prepares an MCP instruction with the exact path and current window's terminal.
+- User terminal requests move into a disclosure between Current window and Terminals, available from every tab.
+- Local discovery works while the server is stopped, global permissions remain enforced, stale searches are discarded and refreshes preserve focus.
+
+## 0.10.35 — Easier skill discovery and loading over MCP
+
+- New `find_skills_code` and `load_skill_code` tools: task/name/description search, loading by name, and explicit disambiguation.
+- Search before response limits and paginated owner-worker catalogs.
+- Modern discovery follows catalog pages without losing entries beyond number 100.
+- Reading a skill never runs its scripts or enables global access.
+
+## 0.10.34 — Bounded skill reads and efficient discovery
+
+- Global skills retain authorized installation links, but internal files cannot link to unrelated personal directories.
+- Reads bound allocations and reject files changing during access. Manifests reject a `SKILL.md` that differs from the content used for their metadata.
+- Pagination builds at most the twenty manifests in the requested page, validates the cursor before file access, and yields between manifests.
+- Terminals sharing a root in one window share discovery; different windows, machines, and roots keep independent catalogs.
+- Updated plugin and repository skills with scope selection, progressive reading, and the distinction between reading files and host-side skill activation.
+- Fixed modern-protocol compatibility with legacy `@shell:` selectors and `@mcp` skill controls while preserving routing-header validation, permissions, and legacy control response shapes.
+- Six new regression suites and three skill/compatibility checks in real VS Code. Fixed incomplete Spanish limit documentation.
+
+## 0.10.33 — Owner-window skills and machine-origin separation
+
+- Skill discovery, reading, file access and manifests now execute inside the worker that owns the selected `shell_id`. The hub never opens a different worker's filesystem paths locally.
+- Each window keeps its own workspace skills; global skills use the worker machine's home directory and require permission both at the hub and at the owning window.
+- Registered windows expose a local installation `machine_id` alongside `window_id`. Same-named skills in separate windows retain distinct URIs.
+- If the owning worker disconnects, requests fail rather than silently reading the coordinator's filesystem.
+- Added a regression with two separate project roots, two simulated personal homes, different permissions, and both legacy and modern MCP clients.
+- **Network boundary:** hub-to-worker connections still use `127.0.0.1`, so one hub aggregates only windows on its own machine. Multiple machines need separate MCP connections or a future authenticated, encrypted federation bridge.
+
+## 0.10.32 — Global Codex skills and quick name listing
+
+- Discover the user's existing skills from `~/.agents/skills`, `~/.codex/skills`, and `~/.codex/skills/.system` without copying files or executing scripts.
+- New explicit opt-in `multi-shell-mcp.globalCodexSkills`, off by default to avoid exposing personal files to connected MCP clients, including remote tunnels.
+- New `list_skill_names_code` tool returns sorted names, search filtering, `project/global/all` scope, and unambiguous entries for duplicate names.
+- Legacy connector support: `execute_shell_command_code(command="skills <shell_id> [global|project]",cwd="@mcp")`, which does not execute a terminal command.
+- New VS Code Command Palette **List available skills** action, with search, copy, and global-access approval.
+- Integrates global skills with `skills/list`, `skills/get`, and MCP file resources while maintaining per-shell isolation and read permissions.
+- Added path safety, permissions, symlink, and dual-protocol regressions. See [Validation](validation.md) for results.
+
+## 0.10.31 — Official MCP Skills protocol and portable plugin
+
+- Added MCP SDK v2 transport (`2026-07-28`): `server/discover` advertises `io.modelcontextprotocol/skills`. Existing v1 transport remains available to older 2025-era clients.
+- Implemented paginated `skills/list` and `skills/get`; each skill entry contains the complete YAML frontmatter, a file manifest, and per-file SHA-256. Skills with the same name in different windows retain distinct URIs.
+- `resources/read` remains workspace-scoped. Symlinks and incomplete or oversized manifests (over 512 files or 16 MiB) are rejected. Optional `directoryRead` is advertised as false.
+- Regular tools, permissions, per-shell isolation, terminal recovery, and FIFO queues are preserved through a shared registration adapter.
+- Portable `plugins/multishell-mcp` package includes a skill, onboarding, local MCP configuration and a repository marketplace. A separate ZIP can be built alongside the VSIX; installation remains user-controlled.
+- Added official negotiation, manifest, security and dual-protocol regressions; see [Validation](validation.md) for results and limitations.
+
+## 0.10.30 — Agent Skills integration
+
+- Discover valid workspace skills in `.agents/skills/`, `.github/skills/`, and `.claude/skills/` without copying or executing files.
+- Add `list_skills_code`, `read_skill_code`, and `read_skill_file_code` tools with mandatory `shell_id` and reads scoped to the selected skill.
+- Publish `skill://index.json` and `skill://workspace/...` resources for clients that support MCP skill-resource discovery.
+- Validate `SKILL.md` YAML, enforce size and path bounds, reject symlinks/traversal, and support on-demand reference and binary asset reads.
+- Include a repository Codex skill in `.agents/skills/multishell-mcp/` and bilingual setup/security documentation.
+- Added regression suites for discovery, reading, multi-window isolation and MCP protocol: **68/68 suites**, ESLint and full npm audit (no known vulnerabilities) passed; 25-file VSIX generated. No automatic script execution or native ChatGPT skill installation.
+
 ## 0.10.29 — Cancellation and late responses
 
 - Temporary creation, closure, and alias changes receive client cancellation. A disconnected request cannot later create a terminal or close a user session after delayed approval.

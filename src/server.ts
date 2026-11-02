@@ -1,8 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createServer, Server } from 'http';
 import { HTTP_RECEIVE_LIMITS } from './http-limits';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import {createMcpHandler} from '@modelcontextprotocol/server';
+import {Readable} from 'stream';
+import {createMcpServer} from './tools/mcp-v2-server';
 import { ShellApi } from './shell-api';
 import {
   WindowRouter,
@@ -11,16 +12,39 @@ import {
   authenticated,
   Registration
 } from './multi-window';
-import { registerShellTools } from './tools/shell-tools';
-import { registerScopedFileTools } from './tools/scoped-file-tools';
-import { registerNativeTools } from './tools/native-mcp-tools';
+import {listSkillsForShell} from './tools/agent-skills';
 import { logger } from './utils/logger';
 import { adaptLegacyToolCall } from './legacy-bridge';
+
+function legacyHelp() {
+  return {usage:{windows:{command:'windows',cwd:'@mcp'},
+    shells:{command:'shells',cwd:'@mcp'},
+    skills:{command:'skills <shell_id> [global|project|all]',cwd:'@mcp'},
+    execute:{command:'<your command>',cwd:'@shell:<shell_id>'},
+    files:'@shell:<alias>/relative/path',example:'shell=1; cwd=@shell:1'}};
+}
+
+/** Preserve the existing control response shape after normal v2 tool dispatch. */
+function legacyControlResponse(raw:string,command:'windows'|'shells'|'skills'|'help'):string {
+  const response=JSON.parse(raw);
+  const result=response.result;
+  const item=result?.content?.[0];
+  if(result?.isError||item?.type!=='text'||typeof item.text!=='string'){return raw;}
+  let value=JSON.parse(item.text);
+  if(command==='windows'){value=value.windows;}
+  else if(command==='shells'){value=value.shells;}
+  else if(command==='help'){value=legacyHelp();}
+  else if(Array.isArray(value.entries)){value.total=value.entries.length;}
+  item.text=JSON.stringify(value,null,2);
+  return JSON.stringify(response);
+}
 
 export interface ToolConfiguration {
   file: boolean;
   edit: boolean;
   shell: boolean;
+  /** Explicit opt-in before the MCP client can read user-level Codex skills. */
+  globalSkills?: boolean;
 }
 
 /**
@@ -31,15 +55,14 @@ export interface ToolConfiguration {
  */
 export class MCPServer {
   private readonly app = express();
+  private mcpHandler?: ReturnType<typeof createMcpHandler>;
   private httpServer?: Server;
   private healthy = false;
   private starting?: Promise<void>;
   private stopping?: Promise<void>;
-  private readonly sessions = new Set<{
-    transport: StreamableHTTPServerTransport;
-    mcp: McpServer;
-    abort: AbortController;
-  }>();
+  /** Active HTTP requests, not MCP v1 transport sessions. Kept observable
+   * for lifecycle assertions and reliably aborted when the listener stops. */
+  readonly sessions=new Set<AbortController>();
 
   constructor(
     private readonly port = 3000,
@@ -162,82 +185,7 @@ export class MCPServer {
           .json({ error: e instanceof Error ? e.message : String(e) });
       }
     });
-    this.app.post('/mcp', (req, res) => {
-      const adapted = adaptLegacyToolCall(req.body);
-      if (adapted.kind === 'rewrite') {
-        req.body = adapted.request;
-      } else if (adapted.kind === 'error') {
-        res
-          .status(200)
-          .json({
-            jsonrpc: '2.0',
-            id: adapted.requestId,
-            result: {
-              isError: true,
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({ error: adapted.message })
-                }
-              ]
-            }
-          });
-        return;
-      } else if (adapted.kind === 'control') {
-        void (async () => {
-          try {
-            let value: unknown;
-            if (adapted.command === 'windows') {
-              value = this.shells.windows?.() || [];
-            } else if (adapted.command === 'shells') {
-              value = await this.shells.list();
-            } else {
-              value = {
-                usage: {
-                  windows: { command: 'windows', cwd: '@mcp' },
-                  shells: { command: 'shells', cwd: '@mcp' },
-                  execute: {
-                    command: '<your command>',
-                    cwd: '@shell:<shell_id>'
-                  },
-                  files: '@shell:<alias>/relative/path',
-                  example: 'shell=1; cwd=@shell:1'
-                }
-              };
-            }
-            res
-              .status(200)
-              .json({
-                jsonrpc: '2.0',
-                id: adapted.requestId,
-                result: {
-                  content: [
-                    { type: 'text', text: JSON.stringify(value, null, 2) }
-                  ]
-                }
-              });
-          } catch (error) {
-            res
-              .status(200)
-              .json({
-                jsonrpc: '2.0',
-                id: adapted.requestId,
-                result: {
-                  isError: true,
-                  content: [
-                    {
-                      type: 'text',
-                      text: JSON.stringify({ error: String(error) })
-                    }
-                  ]
-                }
-              });
-          }
-        })();
-        return;
-      }
-      void this.handle(req, res);
-    });
+    this.app.post('/mcp',(req,res)=>{void this.handleMcp(req,res);});
     this.app.get('/mcp', (_, res) => {
       res.status(405).end('Standalone SSE not available.');
     });
@@ -254,68 +202,105 @@ export class MCPServer {
     });
   }
 
-  private registerTools(mcp: McpServer, requestSignal?: AbortSignal): void {
-    if (this.config.file || this.config.edit) {
-      registerScopedFileTools(mcp, this.shells, this.config);
-    }
-    if (this.config.shell) {
-      registerShellTools(mcp, this.shells, requestSignal);
-    }
-    registerNativeTools(mcp,this.shells);
-  }
-
-  private async handle(req: Request, res: Response): Promise<void> {
-    const mcp = new McpServer({
-      name: 'multi-shell-mcp-server',
-      version: (require('../package.json') as {version:string}).version
+  /** One SDK v2 handler serves both the 2025 initialize era and 2026 discover
+   * era. Preserve compatibility with old @mcp selectors without bypassing
+   * the SDK's modern routing-header consistency checks. */
+  private async handleMcp(req:Request,res:Response):Promise<void>{
+    const handler=this.mcpHandler;
+    if(!handler){res.status(503).end('MCP handler unavailable.');return;}
+    const abort=new AbortController();
+    this.sessions.add(abort);
+    let finished=false;
+    const socketClosed=()=>{if(!finished){abort.abort();}};
+    req.socket.once('close',socketClosed);
+    res.once('finish',()=>{
+      finished=true;
+      this.sessions.delete(abort);
+      req.socket.off('close',socketClosed);
     });
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined
+    res.once('close',()=>{
+      if(!finished){abort.abort();}
+      this.sessions.delete(abort);
+      req.socket.off('close',socketClosed);
     });
-    const requestAbort = new AbortController();
-    const session = { mcp, transport, abort: requestAbort };
-    let cleaned = false;
-    const cleanup = async () => {
-      if (cleaned) {
+    req.once('aborted',()=>abort.abort());
+    try{
+      const headers=new Headers();
+      for(const [key,value] of Object.entries(req.headers)){
+        if(typeof value==='string'&&!['connection','content-length','transfer-encoding'].includes(key)){
+          headers.set(key,value);
+        }
+      }
+      let body:unknown=req.body;
+      let control:'windows'|'shells'|'skills'|'help'|undefined;
+      const incoming=req.body as {method?:unknown;params?:{name?:unknown;
+        _meta?:Record<string,unknown>}}|null;
+      const modern=incoming?.method==='server/discover'||
+        headers.get('mcp-protocol-version')==='2026-07-28'||
+        incoming?.params?._meta?.['io.modelcontextprotocol/protocolVersion']==='2026-07-28';
+      const toolRequest=incoming?.method==='tools/call'&&
+        typeof incoming.params?.name==='string';
+      const routeMatches=!modern||
+        (headers.get('mcp-method')==='tools/call'&&
+          headers.get('mcp-name')===incoming?.params?.name);
+      if(toolRequest&&routeMatches){
+        const adapted=adaptLegacyToolCall(req.body);
+        if(adapted.kind==='error'){
+          res.status(200).json({jsonrpc:'2.0',id:adapted.requestId,
+            result:{resultType:'complete',ttlMs:0,cacheScope:'private',isError:true,
+              content:[{type:'text',text:JSON.stringify({error:adapted.message})}]}});
+          return;
+        }
+        if(adapted.kind==='rewrite'){body=adapted.request;}
+        else if(adapted.kind==='control'){
+          control=adapted.command;
+          const name=control==='skills'?'list_skill_names_code':
+            control==='shells'?'list_shells_code':'list_windows_code';
+          body={...req.body,params:{...req.body.params,name,
+            arguments:control==='skills'?{shell_id:adapted.shellId,scope:adapted.scope||'all'}:{}}};
+          if(modern){headers.set('mcp-name',name);}
+        }
+      }
+      // express.json() has already consumed the Node request stream. Feed
+      // the official v2 handler a web-standard request with the same headers.
+      const webRequest=new globalThis.Request(
+        'http://127.0.0.1:'+this.port+'/mcp',
+        {method:'POST',headers,body:JSON.stringify(body),signal:abort.signal});
+      const answer=await handler.fetch(webRequest);
+      if(res.headersSent||res.destroyed){return;}
+      res.status(answer.status);
+      answer.headers.forEach((value,key)=>{
+        if(!['content-length','transfer-encoding','connection'].includes(key)){
+          res.setHeader(key,value);
+        }
+      });
+      if(control&&answer.ok){
+        let result=Buffer.from(await answer.arrayBuffer());
+        if(answer.headers.get('content-type')?.includes('text/event-stream')){
+          result=Buffer.from(result.toString('utf8').split('\n').map(line=>
+            line.startsWith('data:')?'data: '+legacyControlResponse(line.slice(5),control!):line).join('\n'));
+        }else{
+          result=Buffer.from(legacyControlResponse(result.toString('utf8'),control));
+        }
+        if(!res.destroyed){res.send(result);}
         return;
       }
-      cleaned = true;
-      this.sessions.delete(session);
-      try {
-        await transport.close();
-      } catch {}
-      try {
-        await mcp.close();
-      } catch {}
-    };
-    this.sessions.add(session);
-    let responseFinished = false;
-    res.once('finish', () => {
-      responseFinished = true;
-      void cleanup();
-    });
-    res.once('close', () => {
-      // SDK stream adapters can mark writableEnded/Finished while aborting,
-      // without emitting finish. Only the actual finish event proves delivery.
-      if (!responseFinished) {requestAbort.abort();}
-      void cleanup();
-    });
-    try {
-      this.registerTools(mcp, requestAbort.signal);
-      await mcp.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      logger.error('MultiShell MCP request error: ' + String(error));
-      if (!res.headersSent) {
-        res
-          .status(500)
-          .json({
-            jsonrpc: '2.0',
-            error: { code: -32603, message: 'Internal error' },
-            id: null
-          });
+      // Preserve streaming response semantics and client cancellation rather
+      // than buffering a long-running SSE tool response into memory.
+      if(!answer.body){res.end();return;}
+      const stream=Readable.fromWeb(answer.body as import('stream/web').ReadableStream);
+      stream.on('error',error=>{
+        logger.warn('MCP response stream closed: '+String(error));
+        if(!res.destroyed){res.destroy(error as Error);}
+      });
+      if(res.destroyed){stream.destroy();return;}
+      stream.pipe(res);
+    }catch(error){
+      if(!res.headersSent&&!res.destroyed){
+        logger.error('MCP v2 HTTP request error: '+String(error));
+        res.status(500).json({jsonrpc:'2.0',id:null,
+          error:{code:-32603,message:'MCP request failed'}});
       }
-      await cleanup();
     }
   }
 
@@ -335,6 +320,9 @@ export class MCPServer {
   }
 
   private async startListener(): Promise<void> {
+    this.mcpHandler=createMcpHandler(({requestInfo})=>
+        createMcpServer(this.shells,this.config,requestInfo?.signal),
+        {legacy:'stateless'});
     await new Promise<void>((resolve, reject) => {
       const listener = createServer(HTTP_RECEIVE_LIMITS, this.app);
       this.httpServer = listener;
@@ -378,7 +366,10 @@ export class MCPServer {
 
   private async stopListener(): Promise<void> {
     await this.starting?.catch(() => {});
-    for (const session of this.sessions) {session.abort.abort();}
+    const modern=this.mcpHandler;
+    this.mcpHandler=undefined;
+    for(const request of this.sessions){request.abort();}
+    await modern?.close();
     const http = this.httpServer;
     this.httpServer = undefined;
     this.healthy = false;
@@ -392,14 +383,6 @@ export class MCPServer {
       } finally {
         clearTimeout(timer);
       }
-    }
-    for (const session of [...this.sessions]) {
-      try {
-        await session.transport.close();
-      } catch {}
-      try {
-        await session.mcp.close();
-      } catch {}
     }
     this.sessions.clear();
   }

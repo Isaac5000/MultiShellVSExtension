@@ -2,7 +2,11 @@
 
 [Español](../es/compatibilidad.md) · [Index](../../README.md)
 
-MultiShell MCP 0.10.29 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
+MultiShell MCP 0.10.39 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
+
+Use `list_skill_names_code(shell_id="fallouttraduccion",scope="all")` to get names from the project and Codex. When ChatGPT has a cached tool schema, use `execute_shell_command_code(command="skills fallouttraduccion",cwd="@mcp")` as a read-only control query. To include global Codex skills, explicitly enable the off-by-default `multi-shell-mcp.globalCodexSkills` permission. [Full guide](skills.md).
+
+Version 0.10.39 uses **only MCP SDK v2**, while retaining 2025-era wire-protocol compatibility through `createMcpHandler` (`legacy: 'stateless'`). Clients do not need an SDK v2 migration to keep making valid legacy MCP requests. The tunnel continues to target `http://127.0.0.1:3000/mcp`; no launcher/profile change is required. Full end-to-end verification through the live tunnel remains pending.
 
 ## Current tools
 
@@ -17,6 +21,8 @@ When the MCP client has refreshed its tool schema, use tools with explicit argum
 | `execute_shell_command_code` | Execute a command in the selected `shell_id` |
 | `set_shell_alias_code` | Set or change a terminal alias |
 | `close_shell_code` | Close a terminal; closing a user-owned one requires local approval |
+
+The `list_skills_code`, `read_skill_code`, and `read_skill_file_code` tools expose workspace Agent Skills. Compatible clients can also use `skill://index.json` resources. See the [Agent Skills guide](skills.md).
 
 File reading and editing tools operate within the selected terminal's allowed directory. Diagnostics, symbols, and other native VS Code operations run in the owning window.
 

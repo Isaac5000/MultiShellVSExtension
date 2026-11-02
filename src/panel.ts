@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
 import { MultiWindowController, UserShellRequest } from './multi-window';
+import { listWorkspaceSkills, readWorkspaceSkill, SkillOptions } from './tools/agent-skills';
 
 interface Snapshot {
     running: boolean;
@@ -12,15 +13,21 @@ interface Snapshot {
     activePort?: number;
     windowAutoExit?: boolean;
     requests?: UserShellRequest[];
+    skillsEnabled?: boolean;
+    globalSkillsEnabled?: boolean;
     shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; recovery_reason?: string; external_busy?: boolean; execution_phase?: string; input_wait_hint?: string; output_silent_seconds?: number; busy: boolean; queued: number; auto_exit_interactive?:boolean; auto_exit_override?:boolean }>;
     windows?: Array<{ window_id: string; workspace: string; online: boolean }>;
 }
 interface UIMessage {
-    type: 'refresh' | 'toggle' | 'create' | 'show' | 'close' | 'confirm_restore' | 'copy' | 'alias' | 'port' | 'window_interactive' | 'shell_interactive' | 'request_decision';
+    type: 'refresh' | 'toggle' | 'create' | 'show' | 'close' | 'confirm_restore' | 'copy' | 'alias' | 'port' | 'window_interactive' | 'shell_interactive' | 'request_decision' | 'skills' | 'skill_copy' | 'skill_settings';
     id?: unknown;
     cwd?: unknown;
     share?: unknown;
     value?: unknown;
+    query?: unknown;
+    cursor?: unknown;
+    scope?: unknown;
+    requestId?: unknown;
 }
 function safeError(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
@@ -102,15 +109,21 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                     '</div>',
                     '<div class="window-token" id="windowToken"><span data-i18n="windowIdShort"></span><code id="windowId"></code></div>',
                 '</div>',
-                '<nav class="tabs" aria-label="MultiShell MCP">',
+                '<details class="requests-disclosure" id="requestsDisclosure">',
+                    '<summary><span data-i18n="requests"></span><span id="requestsCount" class="count"></span></summary>',
+                    '<p class="field-help" data-i18n="requestsHelp"></p>',
+                    '<div id="requestsList" class="request-list" role="list"></div>',
+                    '<p id="requestsEmpty" class="field-help" data-i18n="noRequests"></p>',
+                '</details>',
+                '<nav class="tabs" role="tablist" aria-label="MultiShell MCP">',
                     '<button type="button" role="tab" id="tabShells" aria-selected="true" aria-controls="shellsPage">',
                         '<span data-i18n="shells"></span><span id="shellCount" class="count"></span>',
                     '</button>',
                     '<button type="button" role="tab" id="tabWindows" aria-selected="false" aria-controls="windowsPage">',
                         '<span data-i18n="connectedWindows"></span><span id="windowCount" class="count"></span>',
                     '</button>',
-                    '<button type="button" role="tab" id="tabRequests" aria-selected="false" aria-controls="requestsPage">',
-                        '<span data-i18n="requests"></span><span id="requestsCount" class="count"></span>',
+                    '<button type="button" role="tab" id="tabSkills" aria-selected="false" aria-controls="skillsPage">',
+                        '<span data-i18n="skills"></span><span id="skillCount" class="count"></span>',
                     '</button>',
                 '</nav>',
                 '<main>',
@@ -150,12 +163,21 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                         '<div id="windowEmpty" class="empty-state" hidden><div class="empty-icon" data-icon="monitor"></div>',
                             '<strong data-i18n="noWindows"></strong></div>',
                     '</section>',
-                    '<section role="tabpanel" id="requestsPage" aria-labelledby="tabRequests" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="pendingRequests"></h2>',
-                            '<span class="subline" data-i18n="requestsHelp"></span></div></div>',
-                        '<div id="requestsList" class="request-list" role="list"></div>',
-                        '<div id="requestsEmpty" class="empty-state" hidden>',
-                            '<strong data-i18n="noRequests"></strong></div>',
+                    '<section role="tabpanel" id="skillsPage" aria-labelledby="tabSkills" hidden>',
+                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="windowSkills"></h2>',
+                            '<span class="subline" data-i18n="skillsHelp"></span></div>',
+                            '<button id="refreshSkills" type="button" class="icon-button" data-icon="refresh" data-aria-i18n="refreshSkills"></button></div>',
+                        '<div class="search-row"><span data-icon="search" aria-hidden="true"></span>',
+                            '<input type="search" id="searchSkills" maxlength="100" data-placeholder-i18n="searchSkills" data-aria-i18n="searchSkills"></div>',
+                        '<div class="skills-scope"><label for="skillsScope" data-i18n="skillScope"></label>',
+                            '<select id="skillsScope"><option value="all" data-i18n="allSkills"></option>',
+                                '<option value="project" data-i18n="project"></option><option value="global" data-i18n="personalSkills"></option></select></div>',
+                        '<p class="skills-help" id="skillsPermission"></p>',
+                        '<button id="skillSettings" class="skill-settings" type="button" data-i18n="skillSettings"></button>',
+                        '<p class="skills-help" id="skillsStatus" role="status" aria-live="polite"></p>',
+                        '<div id="skillsList" class="skills-list" role="list" aria-busy="false"></div>',
+                        '<button id="moreSkills" type="button" class="skill-more" data-i18n="moreSkills" hidden></button>',
+                        '<p class="skills-help" id="skillsWarnings"></p>',
                     '</section>',
                 '</main>',
                 '<footer class="footer">',
@@ -207,6 +229,65 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         const next=previous.filter(x=>x.shell_id!==id);
         if(previous.length!==next.length){await this.context.workspaceState.update(key,next);}
     }
+    /** Local window only: never use the hub's shell catalog or process.cwd(). */
+    private skillContext():{workspace?:string;enabled:boolean;options:SkillOptions} {
+        const config=vscode.workspace.getConfiguration('multi-shell-mcp');
+        return {
+            workspace:this.getController()?.worker?.workspace || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+            enabled:vscode.workspace.isTrusted!==false &&
+                (config.get<Record<string,boolean>>('enabledTools')||{}).file!==false,
+            options:{includeGlobal:config.get<boolean>('globalCodexSkills')??false}
+        };
+    }
+    private async skillMessage(raw:UIMessage):Promise<void> {
+        try {
+            const local=this.skillContext();
+            if(!local.enabled){throw new Error(this.locale()==='es'
+                ? 'Confía en el proyecto y habilita la lectura de archivos para usar skills.'
+                : 'Trust the workspace and enable file reading to use skills.');}
+            if(!local.workspace){throw new Error(this.locale()==='es'
+                ? 'Abre una carpeta de proyecto en esta ventana.' : 'Open a workspace folder in this window.');}
+            if(raw.type==='skills'){
+                if(typeof raw.requestId!=='number'||!Number.isSafeInteger(raw.requestId)||raw.requestId<0 ||
+                    typeof raw.query!=='string'||raw.query.length>100 ||
+                    !['all','project','global'].includes(String(raw.scope)) ||
+                    (raw.cursor!==undefined && (typeof raw.cursor!=='string'||!/^\d{1,6}$/.test(raw.cursor)))){
+                    throw new Error('Invalid skill search.');
+                }
+                const result=listWorkspaceSkills(local.workspace,{...local.options,
+                    scope:raw.scope as 'all'|'project'|'global',query:raw.query,
+                    cursor:raw.cursor as string|undefined,limit:40});
+                await this.view?.webview.postMessage({type:'skills_result',requestId:raw.requestId,...result});
+                return;
+            }
+            if(typeof raw.value!=='string'||raw.value.length>200){throw new Error('Invalid skill selection.');}
+            // Revalidate path, metadata and current permission at click time.
+            const {metadata}=readWorkspaceSkill(local.workspace,raw.value,local.options);
+            const manager=this.getController();
+            if(!manager){throw new Error(this.locale()==='es'
+                ? 'Inicia MultiShell MCP en esta ventana antes de copiar la instrucción.'
+                : 'Start MultiShell MCP in this window before copying the instruction.');}
+            const snapshot=await manager.panelState();
+            if(!snapshot.shells.some(shell=>shell.shell_id===manager.primaryShellId)){
+                throw new Error('The current window has no available primary shell.');
+            }
+            const current=this.skillContext();
+            if(this.getController()!==manager || current.workspace!==local.workspace || !current.enabled ||
+                (metadata.scope==='global'&&!current.options.includeGlobal)){
+                throw new Error('The window or skill permissions changed. Refresh the skill list.');
+            }
+            const args=JSON.stringify({shell_id:manager.primaryShellId,skill:metadata.skill_path,scope:metadata.scope});
+            const text=this.locale()==='es'
+                ? `Usa la skill ${metadata.name} de esta ventana de MultiShell. Llama a load_skill_code con ${args}. Lee sus instrucciones y los archivos de referencia necesarios antes de aplicarla a mi petición. La lectura de la skill no autoriza ejecutar sus scripts.`
+                : `Use the ${metadata.name} skill from this MultiShell window. Call load_skill_code with ${args}. Read its instructions and any needed reference files before applying it to my request. Reading the skill does not authorize running its scripts.`;
+            await vscode.env.clipboard.writeText(text);
+            await this.view?.webview.postMessage({type:'notice',key:'skillCopied'});
+        }catch(error){
+            if(raw.type==='skills'){
+                await this.view?.webview.postMessage({type:'skills_result',requestId:raw.requestId,error:safeError(error)});
+            }else{await this.view?.webview.postMessage({type:'error',text:safeError(error)});}
+        }
+    }
     async refresh(force = true): Promise<void> {
         if (!this.view || this.busy) {return;}
         this.busy = true;
@@ -219,6 +300,10 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
             }
             snapshot.port = vscode.workspace.getConfiguration('multi-shell-mcp').get<number>('port') ?? 3000;
             snapshot.activePort=manager?.listeningPort;
+            const local=this.skillContext();
+            snapshot.workspace ||= local.workspace;
+            snapshot.skillsEnabled=local.enabled;
+            snapshot.globalSkillsEnabled=local.options.includeGlobal;
             const state={type:'state',snapshot,language:this.locale()};
             const serialized=JSON.stringify(state);
             if(force || this.lastSnapshot!==serialized){
@@ -234,6 +319,11 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
     private async message(raw: UIMessage): Promise<void> {
         if (!raw || typeof raw.type !== 'string') {return;}
         try {
+            if(raw.type==='skills'||raw.type==='skill_copy'){await this.skillMessage(raw);return;}
+            if(raw.type==='skill_settings'){
+                await vscode.commands.executeCommand('workbench.action.openSettings','multi-shell-mcp.globalCodexSkills');
+                return;
+            }
             if (raw.type === 'refresh') { await this.refresh(); return; }
             if (raw.type === 'port') {
                 const port=Number(raw.value);

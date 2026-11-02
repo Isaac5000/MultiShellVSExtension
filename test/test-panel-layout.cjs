@@ -24,6 +24,13 @@ for(const required of [
     'prefers-reduced-motion'
 ].filter(x=>x!=='prefers-reduced-motion'))assert.ok(js.includes(required),'Missing UI implementation: '+required);
 assert.ok(css.includes('prefers-reduced-motion'),'Reduced-motion support missing');
+for(const required of ['id="tabSkills"','id="skillsPage"','id="searchSkills"','id="skillsScope"',
+  'id="requestsDisclosure"','id="skillsStatus" role="status" aria-live="polite"','role="tablist"']){
+  assert.ok(html.includes(required),'Missing accessible skill browser element: '+required);
+}
+assert.ok(!html.includes('id="tabRequests"'),'Requests must live in the local disclosure');
+assert.ok(js.includes('data.requestId!==skillRequest'),'Outdated searches must not replace the current results');
+assert.ok(js.includes('if(rows===skillRows){return;}'),'Periodic terminal updates must preserve skill button focus');
 assert.ok(css.includes('grid-template-columns:minmax(0,1fr) auto'),'Text and action buttons must occupy independent grid columns');
 assert.ok(css.includes('.shell-row.menu-open { z-index: 40;'),'Open dropdown row must paint above all other shell buttons');
 assert.ok(js.includes("'log-out': ["),'Automatic exit needs a distinct log-out icon');

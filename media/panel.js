@@ -96,6 +96,28 @@
     countOne: 'terminal',
     countMany: 'terminales',
     requests: 'Solicitudes',
+    skills: 'Skills',
+    windowSkills: 'SKILLS DE ESTA VENTANA',
+    skillsHelp: 'Pulsa una skill para ver su descripción. Copia la instrucción desde el botón de su derecha.',
+    searchSkills: 'Buscar por nombre o descripción…',
+    refreshSkills: 'Volver a detectar skills',
+    skillScope: 'Mostrar',
+    allSkills: 'Todas las autorizadas',
+    personalSkills: 'Personales',
+    skillSettings: 'Configurar acceso a skills personales',
+    skillsLocal: 'Proyecto: .agents/skills, .github/skills y .claude/skills.',
+    skillsGlobal: 'Incluye las skills personales autorizadas de .agents y .codex.',
+    skillsPrivate: 'Las skills personales no están autorizadas para MCP.',
+    skillsUnavailable: 'Abre un proyecto de confianza y habilita la lectura de archivos.',
+    skillsLoading: 'Buscando skills…',
+    skillsEmpty: 'No hay skills que coincidan. Comprueba las carpetas indicadas o cambia la búsqueda.',
+    skillsFound: 'skills mostradas',
+    skillsTimeout: 'La búsqueda no ha respondido. Pulsa volver a detectar para reintentar.',
+    moreSkills: 'Mostrar más skills',
+    useSkill: 'Copiar para ChatGPT',
+    skillDetails: 'Descripción',
+    skillCopied: 'Instrucción copiada. Pégala en tu chat con MultiShell MCP.',
+    skillStart: 'Inicia MultiShell MCP para copiar la instrucción.',
     pendingRequests: 'SOLICITUDES PENDIENTES',
     requestsHelp: 'La IA no puede autorizar su propia solicitud',
     noRequests: 'No hay solicitudes pendientes',
@@ -202,6 +224,28 @@
     countOne: 'terminal',
     countMany: 'terminals',
     requests: 'Requests',
+    skills: 'Skills',
+    windowSkills: 'SKILLS IN THIS WINDOW',
+    skillsHelp: 'Select a skill to expand its description. Copy the instruction using the button on its right.',
+    searchSkills: 'Search by name or description…',
+    refreshSkills: 'Detect skills again',
+    skillScope: 'Show',
+    allSkills: 'All authorized',
+    personalSkills: 'Personal',
+    skillSettings: 'Configure personal skill access',
+    skillsLocal: 'Workspace: .agents/skills, .github/skills and .claude/skills.',
+    skillsGlobal: 'Includes authorized personal skills from .agents and .codex.',
+    skillsPrivate: 'Personal skills are not authorized for MCP.',
+    skillsUnavailable: 'Open a trusted workspace and enable file reading.',
+    skillsLoading: 'Finding skills…',
+    skillsEmpty: 'No matching skills. Check the listed folders or change your search.',
+    skillsFound: 'skills shown',
+    skillsTimeout: 'Search did not respond. Use detect again to retry.',
+    moreSkills: 'Show more skills',
+    useSkill: 'Copy for ChatGPT',
+    skillDetails: 'Description',
+    skillCopied: 'Instruction copied. Paste it into your chat with MultiShell MCP.',
+    skillStart: 'Start MultiShell MCP to copy the instruction.',
     pendingRequests: 'PENDING REQUESTS',
     requestsHelp: 'The AI cannot approve its own request',
     noRequests: 'No pending requests',
@@ -305,6 +349,18 @@
   let openMenu = null;
   let busyAction = false;
   let portBusy = false;
+  let skillContext;
+  let skillItems = [];
+  let skillCursor;
+  let skillWarnings = [];
+  let skillError = '';
+  let skillBusy = false;
+  let skillRequest = 0;
+  let skillAppend = false;
+  let skillTimer;
+  let skillDeadline;
+  let skillRows;
+  const expandedSkills = new Set();
   const closingIds = new Set();
   const t = key => (locale === 'es' ? es : en)[key] || key;
   const send = (type, more = {}) =>
@@ -391,7 +447,7 @@
     const newPort=Number(portInput.value);
     $('savePort').disabled=portBusy||!Number.isInteger(newPort)||newPort<1024||newPort>65535||
       newPort===state.port;
-    $('workspaceName').textContent = state.running
+    $('workspaceName').textContent = state.workspace
       ? baseName(state.workspace)
       : t('noProject');
     $('workspace').textContent = state.workspace || '—';
@@ -410,6 +466,101 @@
     $('newShell').setAttribute('aria-expanded', String(formOpen));
     $('newShell').classList.toggle('selected', formOpen);
     $('createPanel').hidden = !formOpen || !state.running;
+  }
+  function renderSkills() {
+    const enabled=!!state.workspace && state.skillsEnabled!==false;
+    $('searchSkills').disabled=!enabled;
+    $('skillsScope').disabled=!enabled;
+    $('skillsScope').querySelector('option[value="global"]').disabled=!state.globalSkillsEnabled;
+    $('refreshSkills').disabled=!enabled || skillBusy;
+    $('skillsList').setAttribute('aria-busy',String(skillBusy));
+    $('skillCount').textContent=String(skillItems.length)+(skillCursor?'+':'');
+    $('skillsPermission').textContent=t('skillsLocal')+' '+t(state.globalSkillsEnabled?'skillsGlobal':'skillsPrivate');
+    $('skillSettings').hidden=!!state.globalSkillsEnabled;
+    $('skillsStatus').textContent=!enabled?t('skillsUnavailable'):
+      skillError || (skillBusy?t('skillsLoading'):skillItems.length?`${skillItems.length}${skillCursor?'+':''} ${t('skillsFound')}`:t('skillsEmpty'));
+    $('skillsWarnings').textContent=skillWarnings.join('\n');
+    $('moreSkills').hidden=!skillCursor;
+    $('moreSkills').disabled=skillBusy;
+    const rows=JSON.stringify([skillItems,state.running,state.skillsEnabled,locale]);
+    if(rows===skillRows){return;}
+    skillRows=rows;
+    const target=$('skillsList');
+    target.replaceChildren();
+    for(const skill of skillItems){
+      const row=el('div','skill-row');
+      row.setAttribute('role','listitem');
+      const header=el('div','skill-heading');
+      const identity=el('div','skill-identity');
+      const source=el('span','skill-source',
+        `${t(skill.scope==='global'?'personalSkills':'project')} · ${skill.skill_path}`);
+      source.title=skill.skill_path;
+      identity.append(el('strong','skill-name',skill.name),source);
+      const details=el('details','skill-details');
+      details.open=expandedSkills.has(skill.skill_path);
+      const summary=el('summary','skill-summary');
+      summary.title=`${t('skillDetails')}: ${skill.name}`;
+      summary.setAttribute('aria-label',`${t('skillDetails')}: ${skill.name}`);
+      const chevron=el('span','skill-chevron');
+      chevron.setAttribute('aria-hidden','true');
+      chevron.append(makeIcon('chevron'));
+      summary.append(chevron,el('span','skill-details-label',t('skillDetails')));
+      const content=el('div','skill-expanded');
+      content.append(el('p','skill-description',skill.description));
+      details.append(summary,content);
+      details.addEventListener('toggle',()=>{
+        if(details.open){expandedSkills.add(skill.skill_path);}
+        else{expandedSkills.delete(skill.skill_path);}
+      });
+      const copy=commandButton('copy',
+        `${t('useSkill')}: ${skill.name} (${skill.skill_path})`,
+        ()=>send('skill_copy',{value:skill.skill_path}));
+      copy.classList.add('skill-copy');
+      copy.disabled=!state.running || state.skillsEnabled===false;
+      if(copy.disabled){copy.title=t('skillStart');}
+      header.append(identity,copy);
+      row.append(header,details);
+      target.append(row);
+    }
+  }
+  function cancelSkillSearch() {
+    ++skillRequest;
+    clearTimeout(skillTimer);
+    clearTimeout(skillDeadline);
+    skillBusy=false;
+  }
+  function requestSkills(append=false) {
+    cancelSkillSearch();
+    if(!state.workspace || state.skillsEnabled===false){renderSkills();return;}
+    skillAppend=append;
+    skillBusy=true;
+    skillError='';
+    const requestId=skillRequest;
+    send('skills',{requestId,query:$('searchSkills').value.trim(),scope:$('skillsScope').value,
+      cursor:append?skillCursor:undefined});
+    skillDeadline=setTimeout(()=>{
+      if(requestId!==skillRequest){return;}
+      ++skillRequest;
+      skillBusy=false;
+      skillError=t('skillsTimeout');
+      renderSkills();
+    },10000);
+    renderSkills();
+  }
+  function syncSkills() {
+    const context=JSON.stringify([state.workspace,state.windowId,state.skillsEnabled,state.globalSkillsEnabled]);
+    if(context!==skillContext){
+      skillContext=context;
+      expandedSkills.clear();
+      cancelSkillSearch();
+      skillItems=[];
+      skillCursor=undefined;
+      skillWarnings=[];
+      skillError='';
+      if(!state.globalSkillsEnabled && $('skillsScope').value==='global'){$('skillsScope').value='all';}
+      requestSkills();
+    }
+    renderSkills();
   }
   function renderShells() {
     const target = $('shells');
@@ -632,14 +783,14 @@
     for(const [key,tab,page] of [
       ['shells','tabShells','shellsPage'],
       ['windows','tabWindows','windowsPage'],
-      ['requests','tabRequests','requestsPage']
+      ['skills','tabSkills','skillsPage']
     ]){
       $(tab).setAttribute('aria-selected',String(target===key));
+      $(tab).tabIndex=target===key?0:-1;
       $(page).hidden=target!==key;
     }
     if(target==='shells'){renderShells();}
     else if(target==='windows'){renderWindows();}
-    else{renderRequests();}
   }
   function draw() {
     localize();
@@ -647,6 +798,7 @@
     renderShells();
     renderWindows();
     renderRequests();
+    syncSkills();
     switchPage(activePage);
   }
   function setForm(open) {
@@ -657,16 +809,17 @@
     if (open) {$('shellId').focus();}
   }
   function handleTabKeys(event) {
-    if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'){return;}
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){return;}
     event.preventDefault();
-    const tabs=['shells','windows','requests'];
+    const tabs=['shells','windows','skills'];
     const index=tabs.indexOf(activePage);
-    const next=tabs[(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];
+    const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):
+      tabs[(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];
     switchPage(next);
-    $({shells:'tabShells',windows:'tabWindows',requests:'tabRequests'}[next]).focus();
+    $({shells:'tabShells',windows:'tabWindows',skills:'tabSkills'}[next]).focus();
   }
   insertIcons();
-  $('refresh').addEventListener('click', () => send('refresh'));
+  $('refresh').addEventListener('click', () => {send('refresh');requestSkills();});
   $('portInput').addEventListener('input',drawHeader);
   $('portForm').addEventListener('submit',event=>{
     event.preventDefault();
@@ -687,13 +840,26 @@
   });
   $('tabShells').addEventListener('click', () => switchPage('shells'));
   $('tabWindows').addEventListener('click', () => switchPage('windows'));
-  $('tabRequests').addEventListener('click', () => switchPage('requests'));
+  $('tabSkills').addEventListener('click', () => switchPage('skills'));
+  $('refreshSkills').addEventListener('click',()=>requestSkills());
+  $('moreSkills').addEventListener('click',()=>requestSkills(true));
+  $('skillSettings').addEventListener('click',()=>send('skill_settings'));
+  $('skillsScope').addEventListener('change',()=>{
+    skillItems=[];skillCursor=undefined;requestSkills();
+  });
+  $('searchSkills').addEventListener('input',()=>{
+    cancelSkillSearch();
+    skillItems=[];skillCursor=undefined;skillWarnings=[];skillError='';
+    skillBusy=true;
+    renderSkills();
+    skillTimer=setTimeout(()=>requestSkills(),250);
+  });
   $('windowInteractive').addEventListener('change',event=>{
     send('window_interactive',{value:event.target.checked});
   });
   $('tabShells').addEventListener('keydown', handleTabKeys);
   $('tabWindows').addEventListener('keydown', handleTabKeys);
-  $('tabRequests').addEventListener('keydown', handleTabKeys);
+  $('tabSkills').addEventListener('keydown', handleTabKeys);
   $('newShell').addEventListener('click', () => setForm(!formOpen));
   $('cancelCreate').addEventListener('click', () => setForm(false));
   $('formCancel').addEventListener('click', () => setForm(false));
@@ -731,6 +897,18 @@
       locale = data.language === 'es' ? 'es' : 'en';
       busyAction = false;
       draw();
+    } else if(data.type==='skills_result'){
+      if(data.requestId!==skillRequest){return;}
+      clearTimeout(skillDeadline);
+      skillBusy=false;
+      skillError=data.error||'';
+      if(!data.error){
+        const next=skillAppend?skillItems.concat(data.skills||[]):data.skills||[];
+        skillItems=[...new Map(next.map(skill=>[skill.skill_path,skill])).values()];
+        skillCursor=data.next_cursor;
+        skillWarnings=(data.warnings||[]).filter(w=>!w.startsWith('More skills available;'));
+      }
+      renderSkills();
     } else if (data.type === 'notice') {
       if(data.key==='portSaved'){portBusy=false;send('refresh');}
       notify(t(data.key));

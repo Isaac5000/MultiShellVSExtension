@@ -6,8 +6,8 @@ const path=require('node:path');
 
 const root=path.resolve(__dirname,'..');
 const pkg=require(path.join(root,'package.json'));
-const es=['instalacion.md','uso.md','compatibilidad.md','validacion.md','historial.md'];
-const en=['installation.md','usage.md','compatibility.md','validation.md','changelog.md'];
+const es=['instalacion.md','uso.md','compatibilidad.md','validacion.md','skills.md','historial.md'];
+const en=['installation.md','usage.md','compatibility.md','validation.md','skills.md','changelog.md'];
 const files=['README.md','CHANGELOG.md',
   ...es.map(file=>'docs/es/'+file),
   ...en.map(file=>'docs/en/'+file)];
@@ -47,6 +47,20 @@ for(const text of [spanish,english]){
 assert.ok(spanish.includes('autorización')&&english.includes('approval'),
   'Both language guides must cover explicit approval');
 assert.ok(read('README.md').includes('docs/en/')&&read('README.md').includes('docs/es/'));
+assert.match(read('docs/es/skills.md'),/list_skills_code/);
+assert.match(read('docs/en/skills.md'),/skill:\/\/index\.json/);
+for(const guide of ['docs/es/skills.md','docs/en/skills.md']){
+  const text=read(guide);
+  for(const artifact of [
+    'multi-shell-mcp-server-'+pkg.version+'.vsix',
+    'multi-shell-mcp-plugin-'+pkg.version+'.zip'
+  ]){
+    assert.ok(text.includes(artifact),
+      'Active skills guide must reference current installer '+artifact+' in '+guide);
+  }
+}
+const plugin=JSON.parse(read('plugins/multishell-mcp/plugin.json'));
+assert.equal(plugin.version,pkg.version,'Portable plugin version must match VSIX version');
 const readme=read('README.md');
 const esStart=readme.indexOf('\n## Español\n');
 const enStart=readme.indexOf('\n## English\n');
@@ -95,7 +109,8 @@ assert.doesNotMatch(vscodeIgnore,/^docs\/(?:\*\*|en|es)/m,
   'Documentation must be packaged into the VSIX');
 const validator=read('scripts/validate-windows.ps1');
 for(const name of ['extension/docs/es/uso.md','extension/docs/en/usage.md',
-  'extension/docs/es/instalacion.md','extension/docs/en/installation.md']){
+  'extension/docs/es/instalacion.md','extension/docs/en/installation.md',
+  'extension/docs/es/skills.md','extension/docs/en/skills.md']){
   assert.ok(validator.includes(name),'VSIX inspection must check '+name);
 }
 assert.match(read('.gitattributes'),/^\* text=auto eol=lf$/m,

@@ -13,7 +13,7 @@ type Dict = Record<string, unknown>;
 export type Adaptation =
     | { kind: 'pass' }
     | { kind: 'rewrite'; request: Dict }
-    | { kind: 'control'; command: 'windows' | 'shells' | 'help'; requestId: unknown }
+    | { kind: 'control'; command: 'windows' | 'shells' | 'help' | 'skills'; requestId: unknown; shellId?: string; scope?: 'all'|'project'|'global' }
     | { kind: 'error'; message: string; requestId: unknown };
 
 const ID = '[A-Za-z0-9][A-Za-z0-9_-]{0,39}';
@@ -50,10 +50,18 @@ export function adaptLegacyToolCall(request: unknown): Adaptation {
 
     if (name === 'execute_shell_command_code') {
         if (args.cwd === '@mcp') {
+            if(typeof args.command==='string'){
+                const skills=/^skills\s+([A-Za-z0-9][A-Za-z0-9_-]{0,39})(?:\s+(all|project|global))?$/i.exec(args.command.trim());
+                if(skills){
+                    return {kind:'control',command:'skills',requestId:request.id,
+                        shellId:skills[1],
+                        scope:(skills[2]?.toLowerCase()||'all') as 'all'|'project'|'global'};
+                }
+            }
             if (args.command === 'windows' || args.command === 'shells' || args.command === 'help') {
                 return { kind:'control', command:args.command, requestId:request.id };
             }
-            return failure('Use cwd="@mcp" with command="windows", "shells" or "help".', request.id);
+            return failure('Use cwd="@mcp" with command="windows", "shells", "skills <shell_id> [global|project]" or "help".', request.id);
         }
         const match = typeof args.cwd === 'string' ? SHELL_SELECTOR.exec(args.cwd) : null;
         if (!match) {

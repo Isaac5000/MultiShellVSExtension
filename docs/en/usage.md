@@ -2,7 +2,13 @@
 
 [Español](../es/uso.md) · [Index](../../README.md)
 
-Applies to **MultiShell MCP Server 0.10.29**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
+Applies to **MultiShell MCP Server 0.10.39**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
+
+Open **Ctrl+Shift+P → MultiShell MCP: List available skills** to search and copy names, including global Codex skills when authorized. ChatGPT can also call `list_skill_names_code(shell_id="fallouttraduccion")` or use the legacy read-only `cwd="@mcp"`, `command="skills fallouttraduccion"` control query.
+
+For project skills, see [Agent Skills](skills.md) and call `list_skills_code` with the selected shell.
+
+Open the sidebar's **Skills** tab to search names and descriptions in this window's project. **Copy for ChatGPT** prepares an instruction containing the selected path and primary terminal; paste it into your MCP-connected chat. Terminal creation approvals appear in the **Requests** disclosure, directly below **Current window** and before the tabs. Personal skills require the existing global read permission.
 
 ## 1. Start the server and select a terminal
 
@@ -28,13 +34,13 @@ Make an explicit request, for example:
 
 > Create a persistent user terminal named `tests` in a separate working directory. I will approve it in VS Code. Then use `shell=tests`.
 
-The AI submits `create_user_shell_code` with a `shell_id`, optional working directory (`cwd`), and a `window_id` when needed. **No terminal has been created yet.** The request appears in the owning VS Code window's **Requests** tab with the ID, directory and sharing choice. The terminal is created **only after you select Approve creation**. Rejecting, cancelling or letting the request expire prevents creation.
+The AI submits `create_user_shell_code` with a `shell_id`, optional working directory (`cwd`), and a `window_id` when needed. **No terminal has been created yet.** The request appears in the owning VS Code window's **Requests** disclosure below **Current window** with the ID, directory and sharing choice. The terminal is created **only after you select Approve creation**. Rejecting, cancelling or letting the request expire prevents creation.
 
 Clicking **Create terminal** in the native sidebar form authorizes that local operation without opening a second modal. A single-use permit is bound to the requested ID, directory and sharing option. Undocumented `create_shell_code` arguments or calls to the coordinator's internal control API cannot bypass approval. **The AI cannot approve its own request.**
 
 An MCP request to close a user-owned terminal through `close_shell_code` requires a separate local confirmation. The panel shows only one closing prompt. User-owned terminals retain their classification; running commands in a temporary terminal does not convert it into a persistent one.
 
-**Security boundary:** MultiShell cannot verify the original wording of a request in ChatGPT. Approval in the owning window's **Requests** tab is the effective authorization step for remote creation. It also cannot prevent an already authorized shell command from starting external processes; this is not an OS sandbox.
+**Security boundary:** MultiShell cannot verify the original wording of a request in ChatGPT. Approval in the owning window's **Requests** disclosure below **Current window** is the effective authorization step for remote creation. It also cannot prevent an already authorized shell command from starting external processes; this is not an OS sandbox.
 
 ## 3. Run tasks in parallel
 
@@ -108,7 +114,7 @@ The extension recognizes standalone `less`, `more`, `top`, `htop`, `man`, `btop`
 
 ## Persistent terminal request inbox
 
-Instead of an immediate modal alert, requests from `create_user_shell_code` appear in the owning window's **Requests** tab with terminal ID, directory, and directory-sharing choice. Select **Approve creation** or **Deny**. Requests have a limited lifetime and disappear on client cancellation or server shutdown. No terminal is created without local approval.
+Instead of an immediate modal alert, requests from `create_user_shell_code` appear in the owning window's **Requests** disclosure below **Current window** with terminal ID, directory, and directory-sharing choice. Select **Approve creation** or **Deny**. Requests have a limited lifetime and disappear on client cancellation or server shutdown. No terminal is created without local approval.
 
 Terminals created directly from the panel use the Create button as local approval and do not open another modal. Closing user-owned terminals retains separate authorization.
 ## Window reload and interface language

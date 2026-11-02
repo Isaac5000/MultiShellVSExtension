@@ -2,7 +2,9 @@
 
 [English](../en/validation.md) · [Índice](../../README.md)
 
-Estado de referencia: **MultiShell MCP Server 0.10.29**. La validación incluye compilación, ESLint, auditoría de npm, regresiones, carga HTTP y ventanas reales de VS Code con perfiles separados. Los resultados actuales y sus límites se detallan al final; las pruebas locales no acreditan la continuidad del túnel externo.
+Estado de referencia: **MultiShell MCP Server 0.10.37**. La validación incluye compilación, ESLint, auditoría de npm, regresiones, carga HTTP y ventanas reales de VS Code con perfiles separados. Los resultados actuales y sus límites se detallan al final; las pruebas locales no acreditan la continuidad del túnel externo.
+
+Las regresiones de skills comprueban la lectura de `SKILL.md`, metadatos YAML, aislamiento entre ventanas, protección de rutas, recursos `skill://index.json` y permisos de lectura. Véase [Agent Skills](skills.md).
 
 ## Pruebas automatizadas
 
@@ -190,3 +192,103 @@ Para repetir, ejecuta primero `npm run bundle`, después los tres scripts `test:
 - Carga adicional de esta revisión: **15.444 órdenes en 60 segundos**, 25 reconexiones de trabajadores y 10 reinicios del coordinador; sin errores inesperados, sin colas o controladores retenidos. Latencia p95 39 ms, p99 50 ms y máxima 86 ms. El heap retenido creció 5.696.824 bytes tras solicitar recolección de basura. Los módulos compilados coinciden con los hashes del informe.
 
 Estas comprobaciones son automatizadas; las pruebas con VS Code real tampoco sustituyen la aceptación manual completa del panel. No se ha medido porcentaje de cobertura. Siguen pendientes Linux nativo, suspensión/reanudación y cortes reales del túnel externo. Las pruebas anteriores de 0.10.28 se conservan como historial y no se atribuyen a esta revisión.
+## Verificación de Agent Skills en 0.10.30 — 2 de noviembre de 2026
+
+- `npm run test:multishell`: **68/68 suites superadas**. Incluye el protocolo HTTP MCP real, `skill://index.json`, lectura de metadatos YAML, tres ubicaciones de skills, aislamiento de dos proyectos, traversal y límites.
+- `npm run lint`: correcto, sin advertencias. `npm audit --audit-level=low`: **0 vulnerabilidades conocidas**.
+- `npm run package`: `multi-shell-mcp-server-0.10.30.vsix` generado y revisado, **25 archivos** (incluidas las guías ES/EN y el bundle). Las carpetas `.agents/` de desarrollo y `node_modules` no se incluyen en el VSIX.
+- `git --no-pager diff --check`: correcto. La skill propia `.agents/skills/multishell-mcp` se valida en las pruebas del repositorio.
+
+**Limitación:** las pruebas de instalaciones reales de esta nueva versión (recarga de ventanas, clientes nativos de skills y túnel externo) no se han repetido todavía. Los resultados de VS Code real indicados en apartados históricos pertenecen a versiones anteriores.
+
+## Validación de 0.10.31 — MCP Skills oficial y plugin portable
+
+- `npm run test:multishell`: **72/72 suites superadas**, con compilación TypeScript y bundle. Incluye negociación `2026-07-28` con cliente oficial MCP v2, `server/discover`, `skills/list`, `skills/get`, `resources/read`, paginación, SHA-256, límites de recursos y aislamiento entre ventanas.
+- Se mantiene la compatibilidad de inicialización de clientes MCP antiguos; las pruebas de regresión originales de shells, permisos, colas, cancelación y recuperación siguen pasando.
+- `npm run lint`: **sin errores ni advertencias**; `npm audit --audit-level=low`: **0 vulnerabilidades conocidas**.
+- El plugin portable contiene sus manifiestos, el marketplace local, la skill de configuración y la skill operativa de MultiShell. La instalación requiere autorización del usuario.
+- `npm run package:all` genera el instalador VSIX y un ZIP separado para el plugin; se verifica que no se incluyan carpetas de desarrollo ni dependencias sueltas.
+
+**Pendiente de comprobación manual:** funcionamiento tras instalar 0.10.31 en una ventana de VS Code real, reconocimiento y activación dentro de una cuenta ChatGPT/Codex, acceso mediante túnel externo y pruebas en Linux. El endpoint local `127.0.0.1` no es accesible desde ChatGPT Work alojado en la nube.
+
+## Validación de 0.10.32 — Skills globales de Codex
+
+- Compilación TypeScript y empaquetado: correctos. `node scripts/run-tests.cjs`: **74/74 suites superadas**, incluyendo pruebas nuevas de skills globales, controles de acceso y consulta rápida por nombre.
+- `test/test-global-codex-skills.cjs` verifica los tres directorios de Codex, filtros, nombres duplicados, autorización, lectura de recursos, vínculos contenidos y rechazo de rutas peligrosas.
+- `test/test-global-skills-mcp.cjs` verifica `list_skill_names_code`, el acceso heredado `cwd="@mcp"`, los permisos de lectura y la ausencia de una shell predeterminada.
+- La comprobación de la extensión empaquetada verifica el comando de paleta de VS Code y la copia del nombre de una skill.
+- La consulta real al directorio personal de esta instalación detectó **14 skills válidas, sin advertencias**. No se incluyeron en la extensión ni se copiaron a otros proyectos.
+
+**Pendiente:** confirmación de la interfaz tras instalar la nueva versión y prueba de conexión desde un cliente ChatGPT remoto. Las pruebas integrales de PowerShell 7 requieren `pwsh.exe`, que no estaba disponible en el último arnés de integración real.
+
+## Validación 0.10.33 — Skills por ventana y origen de máquina
+
+- `node scripts/run-tests.cjs`: **75 de 75 suites superadas** tras compilar TypeScript. Incluye la nueva prueba `test/test-skills-window-routing.cjs`.
+- La nueva prueba utiliza dos ventanas con distintas raíces de proyecto, dos carpetas personales simuladas, autorizaciones globales distintas y skills con idénticos nombres. Comprueba herramientas MCP y recursos v1/v2, así como el rechazo de una ventana desconectada.
+- Los directorios que el coordinador conoce se sustituyen deliberadamente por rutas inexistentes para demostrar que la lectura se hace en el worker y nunca se resuelve desde el disco local del coordinador.
+- Se confirma que cada ventana muestra su `window_id` y el identificador `machine_id` registrado; no se eliminan skills iguales de ventanas distintas.
+
+**Importante:** son pruebas de separación lógica y simulación de dos hogares de máquina, no conexiones de red reales entre dos ordenadores. El transporte actual sigue usando `127.0.0.1`. La federación remota y el plugin instalado en una cuenta real requieren validación independiente.
+
+## Auditoría de skills 0.10.33 y correcciones 0.10.34 — 2 de noviembre de 2026
+
+La referencia 0.10.33 superó sus **75/75 suites**, pero las regresiones nuevas reprodujeron cinco debilidades en el acceso y descubrimiento: enlaces internos de skills globales fuera de la skill seleccionada, crecimiento de archivos tras validar su tamaño, metadatos antiguos en un manifiesto nuevo, cálculo de manifiestos fuera de la página solicitada y catálogos repetidos para terminales de la misma carpeta y ventana.
+
+En 0.10.34, `npm run test` supera **81/81 suites**, con compilación y bundle. `npm run lint` y la auditoría completa de npm terminan sin errores ni vulnerabilidades conocidas. Las seis regresiones nuevas fallaban antes de corregir el código y pasan después.
+
+- La prueba de privacidad usa un hogar ficticio y un enlace de directorio de Windows: no lee credenciales reales. Mantiene los enlaces de instalación autorizados dentro del hogar y rechaza los enlaces internos que salen de la skill.
+- La prueba de crecimiento cambia un archivo después de comprobar su tamaño y verifica rechazo y cierre de descriptores. La de coherencia cambia `SKILL.md` entre sus metadatos y el manifiesto.
+- Con 45 skills instrumentadas, la primera página construye **20 manifiestos en lugar de 45**. Tres páginas construyen 20, 20 y 5; los cursores inválidos no calculan ninguno. Es una medida de trabajo realizado, no una comparación de latencia entre máquinas.
+- Cuatro terminales que representan tres pares distintos de ventana y carpeta producen tres consultas y tres entradas; otra ventana con la misma ruta sigue separada.
+- `npm run test:vscode`: **15/15 comprobaciones** en VS Code real. Dos de las nuevas verifican descubrimiento y lectura en el worker propietario, acceso global desactivado y manifiestos MCP modernos cuyos dos recursos coinciden en SHA-256 y tamaño.
+- La tercera comprobación nueva en VS Code real y `test-modern-legacy-selectors` verifican el esquema heredado mediante el cliente oficial MCP moderno: diagnósticos `@shell:`, consultas `@mcp`, ausencia de ejecución para consultas de control, permisos y rechazo de cabeceras de enrutamiento incorrectas. Este fallo también se observó en el conector activo de la versión 33.
+- `npm run test:windows`: **6/6 escenarios** con dos ventanas reales, incluidas recargas con la principal libre y ocupada, conservación del PID y recuperación automática.
+
+El plugin y la skill del repositorio siguen sincronizados. Las pruebas son automatizadas, incluidas las que abren VS Code real; no acreditan instalación o activación nativa del plugin en una cuenta de ChatGPT/Codex. Siguen pendientes Linux nativo, túnel externo, unidades de red lentas y aceptación manual completa. No se ha medido porcentaje de cobertura.
+
+## Panel de skills 0.10.36 — 2 de noviembre de 2026
+
+- `npm run lint`: sin errores ni advertencias. `npm run test`: **83/83 suites**, con compilación y bundle. La nueva suite del panel cubre 84 entradas, búsquedas por descripción, páginas, duplicados, rutas exactas, catálogo sin servidor, permisos retirados y ausencia de ejecución de terminal.
+- Interfaz en Chromium con datos de prueba: **15 comprobaciones** de interacción, incluidas respuestas obsoletas, conservación del foco, teclado y autorización de terminales. También se comprobaron los textos en inglés y la ausencia de desbordamiento horizontal a 240, 280 y 330 píxeles.
+- `npm run test:vscode`: **15/15 comprobaciones** automatizadas en VS Code real con perfil aislado, incluida la recuperación de terminales y la integridad de skills MCP. Esto no equivale a comprobar manualmente el nuevo panel dentro de tu ventana habitual.
+- `npm audit --audit-level=low`: 0 vulnerabilidades conocidas. No se midió cobertura. Pendientes: aceptación visual en una ventana habitual de VS Code, portapapeles y carga desde ChatGPT remoto, túnel y Linux nativo.
+
+## Flujo sencillo de skills 0.10.35
+
+La regresión `test-skill-easy-workflow` usa HTTP real, el worker propietario y clientes MCP v1/v2. Crea un catálogo de 121 skills y comprueba búsqueda por descripción después de la entrada 100, páginas sin duplicados, lectura por nombre, candidatos ante nombres repetidos, selección por ruta, rechazo de acceso global y ausencia de órdenes de terminal. Comprueba también que el protocolo moderno enumera las entradas posteriores a 100.
+
+Las pruebas con VS Code real se distinguen de esta prueba de API con terminales simuladas. Linux, unidades de red y activación nativa en un cliente remoto siguen pendientes.
+
+## Validación 0.10.37 — Auditoría de skills y selector de VS Code
+
+- Graphify auditó 18 archivos de `src/` (310 nodos y 897 relaciones) mediante extracción estructural sin LLM. El grafo se generó en una carpeta temporal ajena al repositorio.
+- `node scripts/run-tests.cjs`: **84 de 84 suites superadas** después de compilar y actualizar `dist/extension.js`. Incluye la nueva prueba `test-skill-name-filter.cjs` con más de 100 coincidencias por descripción y una coincidencia posterior por nombre, atravesando el enrutamiento real al worker y la herramienta HTTP MCP.
+- `test-bundled-startup.cjs` verifica la carga del catálogo después de las primeras 100 entradas, la copia de rutas distintas cuando el nombre se repite, la descripción y el idioma del selector, y que no se explore el directorio del proceso sin proyecto abierto.
+- ESLint: sin errores. `npm audit --audit-level=low`: **0 vulnerabilidades conocidas**. `git diff --check`: sin problemas.
+- La guía activa de skills comprueba ahora las referencias a los paquetes de la versión vigente, evitando instaladores obsoletos en la documentación.
+
+**Pendiente:** instalar manualmente la versión nueva en VS Code y comprobar el selector con ventanas reales, otros equipos y Linux. Las pruebas de regresión no acreditan compatibilidad del plugin nativo con todos los clientes ni la fiabilidad absoluta de las terminales.
+
+## Validación 0.10.38 — Disposición compacta de Skills
+
+- `npm run test`: **85 de 85 suites superadas**, incluida la nueva regresión del desplegable. ESLint correcto y auditoría npm con 0 vulnerabilidades conocidas.
+
+- `test/test-panel-skill-disclosure.cjs`: ejecuta el renderizado del panel con un DOM simulado y comprueba que la ruta se muestra debajo del nombre incluso con la descripción plegada, que los botones de copia están a la derecha y no activan el desplegable, y que los detalles abiertos sobreviven a nuevas páginas.
+- `test/test-panel-layout.cjs` y `test/test-panel-skills.cjs`: validan la estructura accesible, búsqueda, paginación, permisos y contenido copiado con el identificador de terminal correcto.
+- Los controles utilizan `details/summary` nativos, con uso por teclado, iconografía en el idioma de VS Code y texto insertado mediante `textContent` en lugar de HTML sin depurar.
+
+**Pendiente:** aceptación visual manual en VS Code instalado, en paneles muy estrechos y en Linux.
+
+## Validación 0.10.39 — SDK MCP v2 único
+
+- `node scripts/run-tests.cjs`: **88/88 suites superadas** en la batería final, incluidos los clientes MCP antiguos y modernos, cancelaciones, reconexiones, permisos y Skills.
+- ESLint y compilación TypeScript: correctos. `npm audit --audit-level=low`: 0 vulnerabilidades conocidas. Se comprobó también `git diff --check`.
+- La cancelación de solicitudes comprueba el cierre de la respuesta HTTP y de la conexión TCP antes de ejecutar operaciones pendientes.
+
+- El servidor usa exclusivamente `@modelcontextprotocol/server`, sin `@modelcontextprotocol/sdk` entre sus dependencias directas o imports de código.
+- `test/test-sdk-v2-migration.cjs` prueba clientes oficiales MCP de ambas eras, recursos y herramientas equivalentes, el campo obligatorio `resultType` en respuestas modernas, restricción de origen HTTP, permisos y cierre de solicitudes.
+- `test/test-connection-protocol.cjs` comprueba el modo de inicialización antiguo con 40 conexiones, 220 operaciones, solicitudes inválidas y la limpieza de solicitudes; el protocolo moderno mantiene `server/discover` y las skills verificables por SHA-256.
+- Se mantiene `127.0.0.1:3000/mcp` con `legacy: 'stateless'`. El script y ejecutable del túnel no se han alterado.
+- Las pruebas `test-global-skills-mcp.cjs` contemplan la denegación de herramientas no registradas mediante errores JSON-RPC de SDK v2. El aislamiento de ventanas y las autorizaciones locales siguen operativos.
+
+**Pendiente de aceptación:** prueba completa de uso desde el túnel real y verificación manual tras instalar el VSIX en VS Code. Una suite automatizada no sustituye a esa aceptación.

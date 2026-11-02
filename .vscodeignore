@@ -8,6 +8,7 @@ out/test/**
 **/*.map
 **/*.ts
 *.vsix
+multi-shell-mcp-plugin-*.zip
 *-portable.zip
 *.log
 tsconfig.json
@@ -15,6 +16,8 @@ eslint.config.mjs
 .gitignore
 .gitattributes
 AGENTS.md
+.agents/**
+plugins/**
 node_modules/.cache/**
 
 # The runtime is bundled into dist/extension.js. Development/runtime dependencies

@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
+import { randomBytes, randomUUID, timingSafeEqual,createHash } from 'crypto';
+import type {SkillOptions,SkillScopeFilter,SkillInfo} from './tools/agent-skills';
+import type {ServedSkill} from './tools/skills-extension';
 import { createServer, Server as HttpServer, IncomingMessage, ServerResponse } from 'http';
 import { AddressInfo } from 'net';
 import { ShellManager, ShellDescription, ShellExecutionResult, ShellOrigin, SavedUserShell, SavedIdleProof } from './shell-manager';
@@ -14,8 +16,8 @@ export const CONTROL_PATH = '/_multishell/control';
 const ACTION_PATH = '/_multishell/action';
 const MAX_BODY = 2_000_000;
 
-type WorkerAction = { op:'create'|'create_panel_user'|'create_user'|'list'|'execute'|'execute_isolated'|'close'|'close_user'|'close_panel_user'|'alias'|'native'; id?:string; cwd?:string; allow?:boolean; command?:string; timeout?:number; alias?:string; origin?:ShellOrigin; kind?:NativeKind; args?:NativeArgs; panelPermit?:string };
-export interface Registration { window_id:string; workspace:string; worker_port:number; aliases?:Record<string,string>; }
+type WorkerAction = { op:'create'|'create_panel_user'|'create_user'|'list'|'execute'|'execute_isolated'|'close'|'close_user'|'close_panel_user'|'alias'|'native'|'skill_list'|'skill_read'|'skill_file'|'skill_manifest'; id?:string; cwd?:string; allow?:boolean; command?:string; timeout?:number; alias?:string; origin?:ShellOrigin; kind?:NativeKind; args?:NativeArgs; panelPermit?:string; skill_path?:string; skill_file?:string; skill_scope?:SkillScopeFilter; skill_query?:string; skill_name_only?:boolean; skill_cursor?:string; skill_limit?:number; skill_encoding?:'utf-8'|'base64'; include_global?:boolean };
+export interface Registration { window_id:string; workspace:string; worker_port:number; aliases?:Record<string,string>; machine_id?:string; }
 export interface UserShellRequest {
     request_id:string;
     shell_id:string;
@@ -106,11 +108,21 @@ export class WindowWorker {
         id:string;cwd:string;allow:boolean;expires:number;
     }>();
     readonly aliases=new Map<string,string>();
+    readonly machineId:string;
     constructor(private readonly shells:ShellManager,private readonly secret:string,workspace:string,
         private readonly onAliasChanged?:(id:string,alias:string)=>Promise<void>,
         private readonly onUserShellCreated?:(shell:ShellDescription)=>Promise<void>,
-        private readonly queueUserApprovals=false){
+        private readonly queueUserApprovals=false,
+        private readonly globalSkillPermission:()=>boolean=()=>{
+            try {
+                const vscode=require('vscode') as typeof import('vscode');
+                return vscode.workspace.getConfiguration('multi-shell-mcp')
+                    .get<boolean>('globalCodexSkills')??false;
+            }catch{return false;}
+        },
+        private readonly skillHomeDir?:string){
         this.workspace=workspace;
+        this.machineId=createHash('sha256').update('multi-shell-machine-v1:').update(secret).digest('hex').slice(0,20);
         const name=(path.basename(workspace)||'window').replace(/[^A-Za-z0-9_-]/g,'-').slice(0,22);
         this.id=name+'-'+randomUUID().slice(0,8);
     }
@@ -228,9 +240,9 @@ export class WindowWorker {
                             const accept=es?'Crear terminal de usuario':'Create user terminal';
                             const fromPanel=r.op==='create_panel_user';
                             const warning=es
-                                ? (fromPanel?'Confirma la creación de esta terminal de USUARIO.':'La IA solicita una terminal de USUARIO persistente.')+
+                                ? (fromPanel?'Confirma la creaciÃ³n de esta terminal de USUARIO.':'La IA solicita una terminal de USUARIO persistente.')+
                                   '\n\nID: '+r.id+'\nDirectorio: '+r.cwd+
-                                  '\nCompartir directorio: '+(r.allow?'Sí':'No')+
+                                  '\nCompartir directorio: '+(r.allow?'SÃ­':'No')+
                                   '\n\nAutoriza solo si deseas crear esta terminal.'
                                 : (fromPanel?'Confirm this USER terminal creation.':'The AI requests a persistent USER terminal.')+
                                   '\n\nID: '+r.id+'\nDirectory: '+r.cwd+
@@ -284,7 +296,7 @@ export class WindowWorker {
                             const accept=es?'Cerrar terminal de usuario':'Close user terminal';
                             const warning=es
                                 ? 'La IA solicita CERRAR la terminal de usuario '+r.id+
-                                  '. Los procesos que siga ejecutando se interrumpirán. ¿Autorizar?'
+                                  '. Los procesos que siga ejecutando se interrumpirÃ¡n. Â¿Autorizar?'
                                 : 'The AI requests CLOSING user terminal '+r.id+
                                   '. Any running processes will be interrupted. Approve?';
                             const choice=await vscode.window.showWarningMessage(warning,{modal:true},accept);
@@ -307,6 +319,36 @@ export class WindowWorker {
                         await this.onAliasChanged?.(r.id!,alias);
                         this.aliases.set(r.id!,alias);
                         result={shell_id:r.id,alias};
+                        break;
+                    }
+                    case 'skill_list':
+                    case 'skill_read':
+                    case 'skill_file':
+                    case 'skill_manifest': {
+                        // All filesystem access happens in the owning window,
+                        // not the hub. A remote path may refer to another disk.
+                        const root=this.shells.root(r.id!);
+                        const {listWorkspaceSkills,readWorkspaceSkill,readWorkspaceSkillFile}=
+                            require('./tools/agent-skills') as typeof import('./tools/agent-skills');
+                        const allowed=this.globalSkillPermission();
+                        const options:SkillOptions={includeGlobal:allowed&&r.include_global===true,
+                            ...(this.skillHomeDir?{homeDir:this.skillHomeDir}:{})};
+                        if(r.op==='skill_list'){
+                            result=listWorkspaceSkills(root,{...options,scope:r.skill_scope||'all',query:r.skill_query,nameOnly:r.skill_name_only===true,cursor:r.skill_cursor,limit:r.skill_limit});
+                            if(r.include_global&&!allowed){
+                                (result as ReturnType<typeof listWorkspaceSkills>).warnings.push(
+                                    'Global skill access is disabled in the owning VS Code window.');
+                            }
+                        }else if(r.op==='skill_read'){
+                            result=readWorkspaceSkill(root,r.skill_path!,options);
+                        }else if(r.op==='skill_file'){
+                            result=readWorkspaceSkillFile(root,r.skill_path!,r.skill_file!,
+                                r.skill_encoding||'utf-8',options);
+                        }else{
+                            const {buildSkillEntry}=require('./tools/skills-extension') as
+                                typeof import('./tools/skills-extension');
+                            result=buildSkillEntry(root,r.id!,r.skill_path!,options);
+                        }
                         break;
                     }
                     case 'native': {
@@ -375,6 +417,9 @@ export class WindowRouter implements ShellApi {
             r.worker_port<1024 || r.worker_port>65535 ||
             typeof r.workspace!=='string' || !r.workspace.trim() || r.workspace.length>4096) {
             throw new Error('Invalid window registration');
+        }
+        if(r.machine_id && !/^[a-f0-9]{20}$/.test(r.machine_id)){
+            throw new Error('Invalid machine identifier');
         }
         const previous=this.workers.get(r.window_id);
         const sameConnection=previous?.worker_port===r.worker_port&&previous.workspace===r.workspace;
@@ -445,9 +490,9 @@ export class WindowRouter implements ShellApi {
             this.pendingAliasShells.delete(shell);
         }
     }
-    windows():Array<{window_id:string;workspace:string;online:boolean}>{
+    windows():Array<{window_id:string;workspace:string;online:boolean;machine_id?:string}>{
         this.prune();
-        return [...this.workers.values()].map(w=>({window_id:w.window_id,workspace:w.workspace,online:!this.unreachableWorkers.has(w.window_id)}));
+        return [...this.workers.values()].map(w=>({window_id:w.window_id,workspace:w.workspace,online:!this.unreachableWorkers.has(w.window_id),...(w.machine_id?{machine_id:w.machine_id}:{})}));
     }
     private getWorker(id:string,probe=false):WorkerState {
         this.prune();
@@ -563,7 +608,7 @@ export class WindowRouter implements ShellApi {
                 const found=await this.send(id,{op:'list'}) as ShellDescription[];
                 if(!this.currentConnection(connection)){return [];}
                 this.unreachableWorkers.delete(id);
-                return found.filter(x=>this.assigned.get(x.shell_id)?.owner===id).map(x=>({...x,alias:this.shellAliases.get(x.shell_id),window_id:id}));
+                return found.filter(x=>this.assigned.get(x.shell_id)?.owner===id).map(x=>({...x,alias:this.shellAliases.get(x.shell_id),window_id:id,...(connection.machine_id?{machine_id:connection.machine_id}:{})}));
             }catch{
                 if(this.currentConnection(connection)){this.unreachableWorkers.add(id);}
                 return [];
@@ -592,6 +637,29 @@ export class WindowRouter implements ShellApi {
         const a=this.assigned.get(shell);
         if(!a){throw new Error('Unknown shell_id: '+id);}
         return this.send(a.owner,{op:'execute_isolated',id:shell,command,timeout},signal) as Promise<ShellExecutionResult>;
+    }
+    async skillList(id:string,scope:SkillScopeFilter='all',includeGlobal=false,options:SkillOptions={}):Promise<{skills:SkillInfo[];warnings:string[];next_cursor?:string}>{
+        const shell=this.resolve(id);
+        const owner=this.assigned.get(shell)!.owner;
+        return this.send(owner,{op:'skill_list',id:shell,skill_scope:scope,include_global:includeGlobal,skill_query:options.query,skill_name_only:options.nameOnly===true,skill_cursor:options.cursor,skill_limit:options.limit});
+    }
+    async skillRead(id:string,selected:string,options:SkillOptions={}):Promise<{
+        metadata:SkillInfo;content:string;frontmatter:Record<string,unknown>
+    }>{
+        const shell=this.resolve(id),owner=this.assigned.get(shell)!.owner;
+        return this.send(owner,{op:'skill_read',id:shell,skill_path:selected,
+            include_global:options.includeGlobal===true});
+    }
+    async skillFile(id:string,selected:string,file:string,encoding:'utf-8'|'base64',
+        options:SkillOptions={}):Promise<{skill_path:string;file:string;encoding:'utf-8'|'base64';content:string}>{
+        const shell=this.resolve(id),owner=this.assigned.get(shell)!.owner;
+        return this.send(owner,{op:'skill_file',id:shell,skill_path:selected,
+            skill_file:file,skill_encoding:encoding,include_global:options.includeGlobal===true});
+    }
+    async skillManifest(id:string,selected:string,options:SkillOptions={}):Promise<ServedSkill>{
+        const shell=this.resolve(id),owner=this.assigned.get(shell)!.owner;
+        return this.send(owner,{op:'skill_manifest',id:shell,skill_path:selected,
+            include_global:options.includeGlobal===true});
     }
     async native(id:string,kind:NativeKind,args:NativeArgs):Promise<unknown> {
         const shell=this.resolve(id);
@@ -807,7 +875,7 @@ export class MultiWindowController {
         for(const id of this.worker.aliases.keys()){
             if(!live.has(id)){this.worker.aliases.delete(id);}
         }
-        return {window_id:this.worker.id,workspace:this.worker.workspace,worker_port:this.worker.port,aliases:Object.fromEntries(this.worker.aliases)};
+        return {window_id:this.worker.id,workspace:this.worker.workspace,worker_port:this.worker.port,machine_id:this.worker.machineId,aliases:Object.fromEntries(this.worker.aliases)};
     }
     private async register(recoverRestored=false):Promise<void>{
         const deadline=Date.now()+15_000;

@@ -1,8 +1,8 @@
 'use strict';
 const assert=require('node:assert/strict');
 const http=require('node:http');
-const {Client}=require('@modelcontextprotocol/sdk/client/index.js');
-const {StreamableHTTPClientTransport}=require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+const {Client}=require('@modelcontextprotocol/client');
+const {StreamableHTTPClientTransport}=require('@modelcontextprotocol/client');
 const {environment,rpc,tool,wait}=require('./connection-fixture.cjs');
 (async()=>{
  const env=await environment();const clients=[];
@@ -23,7 +23,7 @@ const {environment,rpc,tool,wait}=require('./connection-fixture.cjs');
   const sameIds=await Promise.all(Array.from({length:60},(_,index)=>tool(env.port,'execute_shell_command_code',
    {shell_id:'connection_'+(index%3),command:'collision_'+index,timeout:5000},{id:1})));
   sameIds.forEach((value,index)=>assert.equal(JSON.parse(value.output).command,'collision_'+index));
-  const badBodies=[['{',400],['null',400],['[]',202],['42',400],['"text"',400],
+  const badBodies=[['{',400],['null',400],['[]',400],['42',400],['"text"',400],
    ['{"jsonrpc":"2.0","method":8,"id":1}',400],
    ['{"jsonrpc":"2.0","method":"unknown_method","id":1}',200]];
   for(const [body,status] of badBodies){
@@ -31,7 +31,7 @@ const {environment,rpc,tool,wait}=require('./connection-fixture.cjs');
     headers:{'content-type':'application/json',accept:'application/json,text/event-stream'},body});
    assert.equal(response.status,status,body);
    const raw=await response.text();assert.doesNotMatch(raw,/<html|SyntaxError:|node_modules/i);
-   // SDK 1.32 completes an empty batch as an empty notification response.
+   // SDK v2 rejects empty JSON-RPC batches as malformed requests.
    if(status===202){assert.equal(raw,'');}
    else{
     assert.match(response.headers.get('content-type'),/application\/json|text\/event-stream/);

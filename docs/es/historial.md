@@ -2,6 +2,93 @@
 
 [English version](../en/changelog.md) · [Índice del proyecto](../../README.md)
 
+## 0.10.39 — Migración completa al SDK MCP v2
+
+- Se ha eliminado el SDK v1 como dependencia directa, junto con el transporte HTTP y el registro de herramientas de la implementación antigua.
+- Un único servidor basado en `@modelcontextprotocol/server` atiende protocolos MCP 2025 y 2026 desde `127.0.0.1:3000/mcp`, usando `createMcpHandler` en modo `legacy: 'stateless'`.
+- Se mantiene la compatibilidad de los comandos heredados `@mcp`, las skills por ventana, los permisos, los controles HTTP de Host/Origin, la cancelación y el cierre de solicitudes.
+- Las respuestas modernas de herramientas incluyen los metadatos `resultType`, `ttlMs` y `cacheScope`; las herramientas deshabilitadas se rechazan tanto en el modo antiguo como en el moderno.
+- Migrada la prueba de clientes anteriores al SDK v2 en modo legado. Añadida prueba de migración dual que verifica el registro de ambas eras, la igualdad de recursos, los metadatos modernos y la ausencia de imports v1.
+- El script, perfil y ejecutable del túnel permanecen sin modificar. El comportamiento de la interfaz **Skills** no cambia.
+
+## 0.10.38 — Skills compactas con descripción desplegable
+
+- Cada skill muestra el **nombre y su ruta debajo**, siempre visibles. Solo la descripción está plegada por defecto y se abre con el control accesible «Descripción».
+- El botón de copiar permanece **a la derecha del nombre**, separado del desplegable. Las rutas largas se truncan visualmente con acceso al texto completo al pasar el cursor; copiar no abre ni cierra la descripción.
+- Las descripciones expandidas se mantienen visibles al paginar o actualizar resultados de la misma ventana; se restablecen cuando cambia el proyecto o el contexto de permisos.
+- Se reduce el espacio vertical, se mantiene el acceso al texto completo y se adapta la interfaz a paneles estrechos, temas de VS Code y localización ES/EN.
+- Nueva prueba de regresión que ejecuta el renderizado real del panel con un DOM simulado y comprueba la separación entre controles, estado, permisos y accesibilidad.
+
+## 0.10.37 — Selector y búsqueda de skills más fiables
+
+- Auditoría estructural de 18 archivos de TypeScript mediante Graphify (310 nodos y 897 relaciones), guardada fuera del repositorio para no añadir artefactos temporales.
+- `list_skill_names_code` filtra únicamente por nombre **antes de paginar**. Ya no puede devolver páginas vacías por coincidencias de las descripciones mientras oculta nombres posteriores.
+- El selector de la paleta de VS Code recorre todas las páginas del catálogo, muestra las descripciones y copia la ruta exacta cuando existen skills con nombres duplicados.
+- El selector respeta el idioma de VS Code y no utiliza el directorio de ejecución del proceso como proyecto cuando no hay ninguna carpeta abierta.
+- Pruebas de regresión con más de 100 skills, coincidencias engañosas en descripciones, rutas duplicadas y ventanas sin carpeta. Se conservan los permisos, el aislamiento por ventana y las instrucciones de las skills existentes.
+- Actualizadas las guías y referencias a los instaladores de la versión vigente.
+
+## 0.10.36 — Buscador de skills en el panel de cada ventana
+
+- La pestaña Skills permite buscar por nombre o descripción, filtrar por origen y continuar por páginas de 40 resultados.
+- Cada skill muestra su descripción y ruta; «Copiar para ChatGPT» prepara una instrucción MCP con ruta y terminal exactas de la ventana actual.
+- Las solicitudes de terminales de usuario pasan a un desplegable entre Ventana actual y Terminales, visible desde todas las pestañas.
+- Catálogo local disponible con el servidor detenido, permisos globales conservados, descarte de búsquedas obsoletas y foco estable durante las actualizaciones.
+
+## 0.10.35 — Skills fáciles de buscar y cargar por MCP
+
+- Nuevas herramientas `find_skills_code` y `load_skill_code`: búsqueda por tarea/nombre/descripción, lectura por nombre y selección explícita ante duplicados.
+- Búsqueda anterior al límite de respuesta y catálogo paginado en la ventana propietaria.
+- El descubrimiento moderno recorre las páginas del catálogo sin perder las entradas posteriores a la número 100.
+- Leer una skill no ejecuta sus scripts ni activa permisos globales.
+
+## 0.10.34 — Skills con lecturas acotadas y descubrimiento eficiente
+
+- Las skills globales mantienen los enlaces de instalación autorizados, pero sus archivos internos no pueden enlazar a otros directorios personales.
+- Las lecturas limitan la memoria y rechazan archivos que cambian durante la consulta. Los manifiestos rechazan un `SKILL.md` distinto del utilizado para sus metadatos.
+- La paginación calcula como máximo los veinte manifiestos de la página solicitada, valida el cursor antes de leer archivos y cede ejecución entre manifiestos.
+- Las terminales de una misma carpeta y ventana comparten descubrimiento; ventanas, equipos y carpetas distintos conservan catálogos independientes.
+- Actualizadas la skill del plugin y la del repositorio: selección de alcance, lectura progresiva y diferencia entre leer archivos y activar una skill en el cliente.
+- Corregida la compatibilidad del protocolo moderno con los selectores heredados `@shell:` y las consultas de skills `@mcp`. Se conservan la validación de cabeceras, permisos y las respuestas antiguas de control.
+- Seis nuevas suites de regresión y tres comprobaciones de skills y compatibilidad con VS Code real. Corregida la descripción incompleta de límites en español.
+
+## 0.10.33 — Skills independientes por ventana y origen de máquina
+
+- Las búsquedas, lecturas, archivos y manifiestos de skills se ejecutan en el worker de VS Code propietario del `shell_id`. El coordinador no abre rutas de otro worker en su propio disco.
+- Cada ventana conserva sus propias skills del proyecto; las skills globales se leen en el directorio personal del worker y requieren autorización tanto en el coordinador como en la ventana propietaria.
+- Las ventanas registradas identifican la instalación local mediante `machine_id`, junto a `window_id`. Las skills con nombres idénticos en ventanas distintas mantienen URIs diferentes.
+- Una ventana desconectada no provoca lecturas alternativas desde el disco del coordinador.
+- Nueva regresión con dos directorios de proyecto, dos hogares personales simulados, permisos diferentes y clientes MCP antiguos y modernos.
+- **Límite de red:** el enlace hub-worker sigue usando `127.0.0.1`, por lo que solo agrega ventanas de la misma máquina. Para varias máquinas se necesitan conexiones MCP independientes, una por equipo, o un futuro puente autenticado y cifrado.
+
+## 0.10.32 — Skills globales de Codex y listado por nombre
+
+- MultiShell puede leer directamente las skills del usuario desde `~/.agents/skills`, `~/.codex/skills` y `~/.codex/skills/.system`, sin copiar archivos ni ejecutar scripts.
+- Nueva opción `multi-shell-mcp.globalCodexSkills` con consentimiento explícito; desactivada por defecto para evitar la exposición de archivos personales a clientes MCP conectados mediante túneles.
+- Nueva herramienta `list_skill_names_code` con lista alfabética, filtro de búsqueda, alcance `project/global/all` y rutas individuales para nombres duplicados.
+- Nueva consulta compatible con conectores antiguos: `execute_shell_command_code(command="skills <shell_id> [global|project]",cwd="@mcp")`, sin ejecución en terminal.
+- Nuevo comando en la paleta de VS Code **Mostrar skills disponibles**, con búsqueda, copia del nombre y solicitud de autorización para activar skills globales.
+- Integración de las skills globales en `skills/list`, `skills/get` y los recursos MCP, manteniendo aislamiento por terminal y las restricciones de lectura.
+- Añadidas regresiones de rutas, permisos, enlaces y compatibilidad entre protocolos. Consulta [Validación](validacion.md) para los resultados.
+
+## 0.10.31 — Protocolo oficial MCP Skills y plugin portable
+
+- Nuevo transporte MCP moderno basado en SDK v2 (`2026-07-28`): `server/discover` anuncia `io.modelcontextprotocol/skills`. Se conservan el SDK y el transporte anteriores para clientes MCP de 2025.
+- Implementados `skills/list` paginado y `skills/get`; cada skill lleva frontmatter YAML completo, manifiesto de recursos y SHA-256 de cada fichero. Los nombres repetidos entre ventanas mantienen URI distintas.
+- Las lecturas `resources/read` siguen acotadas a cada proyecto; se rechazan enlaces simbólicos y manifiestos incompletos o que excedan 512 archivos y 16 MiB. Se mantiene `directoryRead: false` (función opcional).
+- Herramientas normales, permisos, aislamiento por shell, recuperación de terminales y cola FIFO conservados mediante un adaptador compartido entre ambos protocolos.
+- Plugin portable `plugins/multishell-mcp` con skill, onboarding, configuración local MCP y marketplace de repositorio. Nuevo paquete ZIP independiente del VSIX; instalación manual y autorización del usuario obligatorias.
+- Pruebas oficiales de negociación, manifiestos, seguridad y regresión para los dos protocolos; consulta [Validación](validacion.md) para los resultados y límites.
+
+## 0.10.30 — Integración con Agent Skills
+
+- Descubrimiento de skills válidas en `.agents/skills/`, `.github/skills/` y `.claude/skills/` del proyecto seleccionado, sin copiar o ejecutar archivos.
+- Añadidas herramientas `list_skills_code`, `read_skill_code` y `read_skill_file_code` con `shell_id` obligatorio y acceso limitado a la carpeta de cada skill.
+- Publicación MCP de `skill://index.json` y recursos `skill://workspace/...` para clientes que reconocen la distribución de skills como recursos.
+- Validación YAML de `SKILL.md`, límites de tamaño, bloqueo de traversal y symlinks, y lectura selectiva de referencias y recursos binarios.
+- Skill de ejemplo `.agents/skills/multishell-mcp/` para Codex y documentación bilingüe de instalación, uso y seguridad.
+- Nuevas suites para descubrimiento, lectura, aislamiento entre ventanas y protocolo MCP: **68/68 suites**, ESLint y auditoría completa de npm sin vulnerabilidades conocidas; VSIX de 25 archivos generado. No hay ejecución automática de scripts ni inscripción automática en el catálogo nativo de ChatGPT.
+
 ## 0.10.29 — Cancelación y respuestas tardías
 
 - La creación temporal, el cierre y los cambios de alias reciben la cancelación del cliente. Una petición desconectada no puede crear posteriormente una terminal ni cerrar una sesión de usuario tras una aprobación tardía.

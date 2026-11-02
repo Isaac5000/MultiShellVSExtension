@@ -3,6 +3,7 @@ const vscode=require('vscode');
 const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
+const crypto=require('node:crypto');
 const project=path.resolve(__dirname,'..');
 const base=process.env.MULTISHELL_TEST_ROOT;
 if(!base){throw Error('Launch through npm run test:vscode');}
@@ -23,6 +24,19 @@ async function rpc(method,params,signal){
  const data=JSON.parse(row?row.slice(5):body);if(data.error)throw Error(JSON.stringify(data.error));return data.result;
 }
 async function tool(name,args={},signal){return rpc('tools/call',{name,arguments:args},signal);}
+async function modernRpc(method,params={}){
+ const metadata={'io.modelcontextprotocol/protocolVersion':'2026-07-28',
+  'io.modelcontextprotocol/clientInfo':{name:'real-vscode-skills-test',version:'1'},
+  'io.modelcontextprotocol/clientCapabilities':{}};
+ const response=await fetch('http://127.0.0.1:'+testPort+'/mcp',{method:'POST',signal:AbortSignal.timeout(10000),
+  headers:{'content-type':'application/json',accept:'application/json, text/event-stream',
+   'MCP-Protocol-Version':'2026-07-28','Mcp-Method':method,
+   ...(method==='resources/read'?{'Mcp-Name':params.uri}:method==='tools/call'?{'Mcp-Name':params.name}:{})},
+  body:JSON.stringify({jsonrpc:'2.0',id:++id,method,params:{...params,_meta:metadata}})});
+ const body=await response.text();assert.equal(response.status,200,body);
+ const row=body.split(/\r?\n/).find(line=>line.startsWith('data:'));
+ const data=JSON.parse(row?row.slice(5):body);if(data.error)throw Error(JSON.stringify(data.error));return data.result;
+}
 function parsed(value){if(value.isError)throw Error(value.content?.[0]?.text);return JSON.parse(value.content[0].text);}
 const execute=(shell_id,command,timeout=10000,signal)=>tool('execute_shell_command_code',{shell_id,command,timeout},signal);
 exports.run=async()=>{
@@ -45,6 +59,38 @@ exports.run=async()=>{
    const shell='audit_live_'+suffix;shellIds.push(shell);
    parsed(await tool('create_shell_code',{shell_id:shell,cwd:path.join(base,'test-workspace',folder),window_id:report.windowId}));
   }
+  await check('real_owner_skill_tools_and_reference',async()=>{
+   const dir=path.join(base,'test-workspace/a/.agents/skills/native-review');fs.mkdirSync(path.join(dir,'references'),{recursive:true});
+   fs.writeFileSync(path.join(dir,'SKILL.md'),'---\nname: native-review\ndescription: Real owner-window skill fixture\n---\n# Native skill\n');
+   fs.writeFileSync(path.join(dir,'references/guide.md'),'Real worker reference ✓');
+   const result=parsed(await tool('list_skills_code',{shell_id:shellIds[0],scope:'project'}));
+   assert.ok(result.skills.some(skill=>skill.name==='native-review'));
+   const reference=parsed(await tool('read_skill_file_code',{shell_id:shellIds[0],
+    skill_path:'.agents/skills/native-review',file:'references/guide.md'}));
+   assert.equal(reference.content,'Real worker reference ✓');
+   assert.equal(parsed(await tool('list_skill_names_code',{shell_id:shellIds[0],scope:'global'})).global_enabled,false);
+   return {ownerWindow:report.windowId,globalAccessDisabled:true};
+  });
+  await check('real_owner_modern_skill_manifest_integrity',async()=>{
+   const discovered=await modernRpc('server/discover');assert.ok(discovered.capabilities.extensions['io.modelcontextprotocol/skills']);
+   const uri='skill://workspace/'+shellIds[0]+'/agents/native-review/SKILL.md';
+   const listed=await modernRpc('skills/list');assert.ok(listed.skills.some(skill=>skill.uri===uri));
+   const {skill}=await modernRpc('skills/get',{uri});assert.equal(skill.frontmatter.name,'native-review');
+   assert.equal(skill.resources.length,2);
+   for(const file of skill.resources){const read=await modernRpc('resources/read',{uri:file.uri});
+    const bytes=read.contents[0].blob?Buffer.from(read.contents[0].blob,'base64'):Buffer.from(read.contents[0].text,'utf8');
+    assert.equal(file.size,bytes.length);assert.equal(file.digest,'sha256:'+crypto.createHash('sha256').update(bytes).digest('hex'));
+   }
+   return {verifiedResources:skill.resources.length,protocol:'2026-07-28'};
+  });
+  await check('real_modern_cached_schema_compatibility',async()=>{
+   const listed=parsed(await modernRpc('tools/call',{name:'execute_shell_command_code',
+    arguments:{cwd:'@mcp',command:'skills '+shellIds[0]+' project'}}));
+   assert.ok(listed.names.includes('native-review'));
+   const diagnostics=parsed(await modernRpc('tools/call',{name:'get_diagnostics_code',
+    arguments:{path:'@shell:'+shellIds[0],format:'json'}}));
+   assert.ok(Array.isArray(diagnostics));return {legacySelectors:true,modernProtocol:true};
+  });
   for(const id of shellIds){vscode.window.terminals.find(t=>t.name==='MCP ['+id+']')?.show(true);}
   try{await until(()=>shellIds.every(id=>vscode.window.terminals.find(t=>t.name==='MCP ['+id+']')?.shellIntegration),20000);}
   catch(error){report.terminalDiagnostics=await Promise.all(vscode.window.terminals.map(async t=>({name:t.name,pid:await t.processId,exit:t.exitStatus,integration:!!t.shellIntegration,options:t.creationOptions})));throw error;}

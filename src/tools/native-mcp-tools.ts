@@ -1,5 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {ToolRegistry} from './tool-registry';
+import type {CallToolResult} from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { ShellApi } from '../shell-api';
 import { NativeKind, NativeArgs } from './native-window-tools';
@@ -7,7 +7,7 @@ import { NativeKind, NativeArgs } from './native-window-tools';
 function response(value:unknown,isError=false):CallToolResult {
     return {isError,content:[{type:'text',text:typeof value==='string'?value:JSON.stringify(value,null,2)}]};
 }
-export function registerNativeTools(server:McpServer,shells:ShellApi):void {
+export function registerNativeTools(server:ToolRegistry,shells:ShellApi):void {
     const selected=z.string().describe('REQUIRED shell ID or short alias; never defaults to another window.');
     async function action(shell_id:string,kind:NativeKind,args:NativeArgs):Promise<CallToolResult>{
         try{
