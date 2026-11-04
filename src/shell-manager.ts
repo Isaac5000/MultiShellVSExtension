@@ -13,7 +13,7 @@ export type ShellRecoveryReason = 'restored_unverified' | 'ambiguous_completion'
 export type ShellExecutionPhase =
     'waiting_for_integration' | 'running' | 'waiting_for_completion' |
     'output_error_waiting_for_completion' | 'draining_output' | 'timed_out_preserved';
-export type ShellInputHint = 'pager' | 'confirmation' | 'credentials';
+export type ShellInputHint = 'pager' | 'confirmation' | 'credentials' | 'continuation';
 
 export interface ShellDescription {
     /** A manually started terminal command is active, not an MCP queue item. */
@@ -79,6 +79,10 @@ export function detectInputWaitHint(recentOutput:string):ShellInputHint|undefine
     const plain=recentOutput.slice(-8192)
         .replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g,'')
         .replace(/\r/g,'\n').trimEnd();
+    // PowerShell's secondary prompt often ends in >> when quotes, braces
+    // or command syntax were left incomplete. This is informational only;
+    // never inject Enter, Ctrl+C or q to guess how to recover.
+    if(/(?:^|\n)>>$/.test(plain)){return 'continuation';}
     if(/(?:\(END\)|(?:^|\n):|--\s*(?:More|Más|Mehr|Plus|Mais|Altro)\s*--)$/i.test(plain)){
         return 'pager';
     }
@@ -91,11 +95,42 @@ export function detectInputWaitHint(recentOutput:string):ShellInputHint|undefine
     return undefined;
 }
 
-/** Only standalone allowlisted programs may receive q.
- * A recognized command is necessary but NOT sufficient: its current output
- * must also contain a real interactive screen or pager prompt.
+/** Do not infer foreground-pager identity from an ambiguously escaped shell
+ * command. Quoting rules differ between PowerShell, CMD and POSIX shells.
+ * Fail closed instead of injecting 'q' into a command that might be waiting
+ * for a continuation prompt or might run a different program.
+ *
+ * This does NOT block a user's explicit command: it only disables automatic
+ * keystrokes when parsing is ambiguous. The active process stays preserved.
+ */
+export function hasAmbiguousInteractiveEscapes(command:string):boolean {
+    let quote:"'"|'"'|undefined;
+    for(let i=0;i<command.length;i++){
+        const char=command[i];
+        const code=char.charCodeAt(0);
+        if(code<32||code===127){return true;}
+        if(char==="'"||char==='"'){
+            if(!quote){quote=char;}
+            else if(quote===char){quote=undefined;}
+            continue;
+        }
+        if(char==='\\'){
+            const next=command[i+1];
+            // Shell-dependent escaped quotes, spaces and operators are not
+            // safe evidence of a standalone pager command.
+            if(next===undefined||/[\s"'`$;|&<>(){}\[\]]/.test(next)){return true;}
+        }
+    }
+    return quote!==undefined;
+}
+
+/** Only standalone allowlisted programs may receive q, and only if their
+ * observed output independently confirms a pager/full-screen interface.
  */
 export function recognizedInteractiveCommand(command:string):string|undefined {
+    // Reject malformed raw input BEFORE trim(): leading/trailing control
+    // sequences must not be hidden by whitespace normalization.
+    if(hasAmbiguousInteractiveEscapes(command)){return undefined;}
     const trimmed=command.trim();
     if(/[\r\n;|&<>\x60$()]/.test(trimmed)){return undefined;}
     const match=/^(?:(?:\/usr\/bin\/|\/bin\/)?)(less|more|top|htop|man|btop|bpytop|nvtop|iftop|iotop|tig)(?=\s|$)/i.exec(trimmed);

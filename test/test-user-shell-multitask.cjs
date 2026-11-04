@@ -85,10 +85,17 @@ const multi=proxyquire('../out/multi-window.js',{
    assert.ok(pair.every(x=>x.output.includes('OUTPUT_')));
 
    const orderBefore=started.length;
-   const same=await Promise.all([
-     router.execute('work_a','long_first',1600),
-     router.execute('work_a','short_second',1600)
-   ]);
+   // Each execute request travels over its own HTTP connection. Concurrent
+   // requests have no guaranteed network arrival order, so first establish
+   // that long_first reached the worker before testing same-shell FIFO.
+   const first=router.execute('work_a','long_first',1600);
+   const deadline=Date.now()+1200;
+   while(!started.slice(orderBefore).some(x=>x[1]==='long_first') &&
+         Date.now()<deadline){await sleep(5);}
+   assert.ok(started.slice(orderBefore).some(x=>x[1]==='long_first'),
+     'First command must reach the shell before the queued FIFO assertion');
+   const second=router.execute('work_a','short_second',1600);
+   const same=await Promise.all([first,second]);
    assert.equal(same[0].exit_code,0);assert.equal(same[1].exit_code,0);
    assert.equal(maxPerShell.get('MCP [work_a]'),1,'Same-shell commands must not overlap');
    assert.deepEqual(started.slice(orderBefore).map(x=>x[1]),['long_first','short_second']);

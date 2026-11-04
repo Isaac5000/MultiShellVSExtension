@@ -14,6 +14,10 @@ async function main(){
    format:'cjs',
    target:'node20',
    external:['vscode'],
+   // jsonc-parser's default Node entrypoint is UMD with dynamic relative
+   // require() calls that esbuild cannot collect into a single-file VSIX.
+   // Bundle the official ESM build instead; tests still use normal package imports.
+   alias:{'jsonc-parser':require.resolve('jsonc-parser/lib/esm/main.js')},
    packages:'bundle',
    sourcemap:false,
    minify:false,

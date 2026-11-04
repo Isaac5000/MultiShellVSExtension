@@ -3,6 +3,7 @@ import { createServer, Server } from 'http';
 import { HTTP_RECEIVE_LIMITS } from './http-limits';
 import {createMcpHandler} from '@modelcontextprotocol/server';
 import {Readable} from 'stream';
+import {AsyncLocalStorage} from 'async_hooks';
 import {createMcpServer} from './tools/mcp-v2-server';
 import { ShellApi } from './shell-api';
 import {
@@ -15,6 +16,7 @@ import {
 import {listSkillsForShell} from './tools/agent-skills';
 import { logger } from './utils/logger';
 import { adaptLegacyToolCall } from './legacy-bridge';
+import {validBearer} from './ai-access';
 
 function legacyHelp() {
   return {usage:{windows:{command:'windows',cwd:'@mcp'},
@@ -38,6 +40,12 @@ function legacyControlResponse(raw:string,command:'windows'|'shells'|'skills'|'h
   item.text=JSON.stringify(value,null,2);
   return JSON.stringify(response);
 }
+
+/** Track the actual HTTP request cancellation across SDK async callbacks.
+ * Some SDK callbacks run after streaming response setup; a request-specific
+ * AsyncLocalStorage context avoids relying solely on SDK protocol cancellation.
+ */
+const httpAbortContext=new AsyncLocalStorage<AbortSignal>();
 
 export interface ToolConfiguration {
   file: boolean;
@@ -73,9 +81,9 @@ export class MCPServer {
       edit: true,
       shell: true
     },
-    private readonly registrationRouter?: WindowRouter
+    private readonly registrationRouter?: WindowRouter,
+    private readonly access?:{bearerToken?:string;localToken?:string;isEnabled?:()=>boolean}
   ) {
-    this.app.use(express.json({ limit: '2mb' }));
     // The tunnel's server-to-server requests normally omit Origin. Do not
     // introduce OAuth or custom headers that would break its no-auth profile.
     this.app.use((req,res,next)=>{
@@ -101,6 +109,29 @@ export class MCPServer {
       if(!permitted){res.status(403).json({error:'Untrusted request origin'});return;}
       next();
     });
+    // Every production listener is authenticated: the local coordinator uses
+    // a shared private token, while independent AI gateways use Bearer keys.
+    // The test-only no-access constructor remains available for fixtures.
+    if(this.access){
+      this.app.use('/mcp',(req,res,next)=>{
+        if(this.access!.isEnabled&&this.access!.isEnabled()===false){
+          res.status(503).setHeader('Cache-Control','no-store');
+          res.json({error:'AI gateway no longer belongs to a trusted active coordinator.'});
+          return;
+        }
+        const authorized=this.access!.localToken!==undefined
+          ?authenticated(req.headers['x-multishell-local-auth'],this.access!.localToken)
+          :validBearer(req.headers.authorization,this.access!.bearerToken||'');
+        if(!authorized){
+          res.status(401).setHeader('WWW-Authenticate','Bearer realm="multishell"');
+          res.setHeader('Cache-Control','no-store');
+          res.json({error:'Invalid or missing AI connection credentials.'});
+          return;
+        }
+        next();
+      });
+    }
+    this.app.use(express.json({ limit: '2mb' }));
     this.app.post(REGISTER_PATH, async (req, res) => {
       if (!this.registrationRouter) {
         res.status(404).end();
@@ -208,6 +239,14 @@ export class MCPServer {
   private async handleMcp(req:Request,res:Response):Promise<void>{
     const handler=this.mcpHandler;
     if(!handler){res.status(503).end('MCP handler unavailable.');return;}
+    // Apply the same bound to BOTH the main MCP listener and AI gateways.
+    // Requests failing authentication are rejected by middleware first.
+    if(this.sessions.size>=32){
+      res.setHeader('Cache-Control','no-store');
+      res.setHeader('Retry-After','1');
+      res.status(429).json({error:'MCP concurrency limit reached.'});
+      return;
+    }
     const abort=new AbortController();
     this.sessions.add(abort);
     let finished=false;
@@ -266,7 +305,7 @@ export class MCPServer {
       const webRequest=new globalThis.Request(
         'http://127.0.0.1:'+this.port+'/mcp',
         {method:'POST',headers,body:JSON.stringify(body),signal:abort.signal});
-      const answer=await handler.fetch(webRequest);
+      const answer=await httpAbortContext.run(abort.signal,()=>handler.fetch(webRequest));
       if(res.headersSent||res.destroyed){return;}
       res.status(answer.status);
       answer.headers.forEach((value,key)=>{
@@ -305,6 +344,10 @@ export class MCPServer {
   }
 
   /** True only while the local HTTP listener can accept connections. */
+  public get listeningPort():number{
+    const address=this.httpServer?.address();
+    return address&&typeof address==='object'?address.port:0;
+  }
   public isHealthy(): boolean {
     return this.healthy && Boolean(this.httpServer?.listening);
   }
@@ -320,8 +363,13 @@ export class MCPServer {
   }
 
   private async startListener(): Promise<void> {
-    this.mcpHandler=createMcpHandler(({requestInfo})=>
-        createMcpServer(this.shells,this.config,requestInfo?.signal),
+    this.mcpHandler=createMcpHandler(({requestInfo})=>{
+        const fromHttp=httpAbortContext.getStore();
+        const signal=fromHttp&&requestInfo?.signal
+            ? AbortSignal.any([fromHttp,requestInfo.signal])
+            : (fromHttp||requestInfo?.signal);
+        return createMcpServer(this.shells,this.config,signal);
+    },
         {legacy:'stateless'});
     await new Promise<void>((resolve, reject) => {
       const listener = createServer(HTTP_RECEIVE_LIMITS, this.app);

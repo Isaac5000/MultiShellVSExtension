@@ -18,7 +18,7 @@ assert.deepEqual(Object.keys(mcp.mcpServers),['multishell']);
 const server=mcp.mcpServers.multishell;
 assert.equal(server.type,'streamable-http');
 assert.equal(server.url,'http://127.0.0.1:3000/mcp');
-assert.equal(server.extensions['com.openai'].auth.type,'none');
+assert.deepEqual(server.extensions['com.openai'].auth,{type:'api_key',headerScheme:'custom_header',headerName:'X-MultiShell-Local-Auth'});
 assert.equal(marketplace.name,'multishell-local');
 assert.ok(marketplace.plugins.some(p=>p.name===manifest.name &&
   p.source.source==='local' && p.source.path==='./plugins/multishell-mcp'));
@@ -31,7 +31,8 @@ for(const file of ['SKILL.md','references/tool-guide.md']){
 const setup=fs.readFileSync(path.join(plugin,'skills/setup/SKILL.md'),'utf8');
 assert.match(setup,/^---\r?\nname: setup\r?\ndescription:/);
 assert.match(setup,/cloud cannot reach this loopback/i);
-assert.match(setup,/Do not expose the unauthenticated local endpoint/i);
+assert.match(setup,/The main local endpoint requires a private/i);
+assert.match(setup,/does not ship credentials/i);
 assert.match(fs.readFileSync(path.join(root,'.vscodeignore'),'utf8'),/^plugins\/\*\*$/m);
 assert.match(fs.readFileSync(path.join(root,'.vscodeignore'),'utf8'),/^multi-shell-mcp-plugin-\*\.zip$/m);
 

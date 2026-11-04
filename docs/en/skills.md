@@ -2,7 +2,7 @@
 
 [Español](../es/skills.md) · [Project index](../../README.md)
 
-**MultiShell MCP Server 0.10.39** supports workspace Agent Skills: `SKILL.md` directories with YAML `name` and `description` metadata.
+**MultiShell MCP Server 0.10.52** supports workspace Agent Skills: `SKILL.md` directories with YAML `name` and `description` metadata.
 
 ## Where to place skills
 
@@ -65,7 +65,7 @@ Legacy MCP clients retain `list_skills_code`, `read_skill_code`, and `read_skill
 
 The portable plugin lives at `plugins/multishell-mcp/`, with `plugin.json`, `mcp.json`, and `setup` and `multishell-mcp` skills. Its repo-local marketplace is `.agents/plugins/marketplace.json` (`multishell-local`).
 
-Run `npm run package:all` to build `multi-shell-mcp-server-0.10.39.vsix` and `multi-shell-mcp-plugin-0.10.39.zip`. Install the local plugin from the repo marketplace on a supported client and approve the installation. Building does not install it automatically.
+Run `npm run package:all` to build `multi-shell-mcp-server-0.10.52.vsix` and `multi-shell-mcp-plugin-0.10.52.zip`. Install the local plugin from the repo marketplace on a supported client and approve the installation. Building does not install it automatically.
 
 **Important:** the bundled `mcp.json` points to `http://127.0.0.1:3000/mcp`, which is reachable only on the same computer at the default port. Cloud-hosted ChatGPT Work needs a separately registered, secure MCP tunnel connection. Do not expose the local unauthenticated server to the public internet. The plugin packages skills but grants no additional permissions.
 

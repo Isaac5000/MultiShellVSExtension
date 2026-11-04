@@ -2,13 +2,120 @@
 
 [English](../en/usage.md) · [Índice](../../README.md)
 
-Comportamiento de **MultiShell MCP Server 0.10.39**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
+Comportamiento de **MultiShell MCP Server 0.10.52**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
 
 Abre **Ctrl+Mayús+P → MultiShell MCP: Mostrar skills disponibles** para consultar y copiar nombres, incluyendo las skills globales de Codex si autorizas su lectura. Por chat también puedes pedir `list_skill_names_code(shell_id="fallouttraduccion")` o, con el conector antiguo, `cwd="@mcp"` y `command="skills fallouttraduccion"`.
 
 Para descubrir skills del proyecto, consulta [Agent Skills](skills.md) y usa `list_skills_code` con la terminal seleccionada.
 
-En el panel, abre **Skills** para buscar por nombre o descripción en el proyecto de esta ventana. **Copiar para ChatGPT** prepara la instrucción con la ruta elegida y la terminal principal; pégala en tu chat conectado a MCP. Las solicitudes de creación de terminales están en el desplegable **Solicitudes**, justo bajo **Ventana actual** y antes de las pestañas. Las skills personales requieren su permiso de lectura existente.
+En el panel, abre **Skills** para buscar por nombre o descripción en el proyecto de esta ventana. **Copiar para ChatGPT** prepara la instrucción con la ruta elegida y la terminal principal; pégala en tu chat conectado a MCP. Las solicitudes de creación de terminales están en la sección independiente **Solicitudes**, sin un segundo desplegable interior. Las skills personales requieren su permiso de lectura existente.
+
+## Conectar ChatGPT: crear el complemento MCP además del túnel (0.10.52)
+
+El apartado **ChatGPT → ? ¿Cómo conectar ChatGPT mediante MCP?** de **Conexiones IA** explica los tres pasos necesarios. No basta con instalar y arrancar `tunnel-client` desde VS Code.
+
+1. En [OpenAI Platform — Tunnels](https://platform.openai.com/settings/organization/tunnels) crea o selecciona un túnel y copia su **`tunnel_id`**. Debe estar asociado al espacio de trabajo de ChatGPT en el que crearás el complemento. Crear un túnel requiere **Tunnels Read + Manage**.
+2. En [Platform — API keys](https://platform.openai.com/settings/organization/api-keys) crea una **API key de ejecución restringida** con **Tunnels Read + Use**. No utilices una clave administrativa para el cliente que permanece activo.
+3. En **MultiShell → Túnel OpenAI**, instala Tunnel Client, introduce el **mismo `tunnel_id`** y esa **API key de ejecución**, crea el perfil y pulsa **Conectar**. Mantén activo el MCP local.
+4. En **ChatGPT → Plugins → + → Add custom MCP server** configura un complemento MCP propio: **nombre** (por ejemplo, MultiShell MCP), **descripción** opcional, **Connection: Tunnel** y elige tu túnel o pega el **mismo `tunnel_id`**. Configura la autenticación según el servidor MCP; el servidor local actual no implementa OAuth. **No pegues en ChatGPT la API key de ejecución del túnel**.
+5. Lee la advertencia, marca **I understand and want to continue**, pulsa **Create as a plugin**, revisa las herramientas descubiertas y prueba el complemento en un chat. Si no aparece el túnel, revisa permisos **Tunnels Read + Use** y la asociación con el espacio de trabajo.
+
+Este complemento MCP creado en ChatGPT **no equivale** al paquete local `multi-shell-mcp-plugin-*.zip` ni se genera automáticamente al arrancar Tunnel Client. Consulta la [guía oficial para conectar MCP personalizados](https://help.openai.com/es-es/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
+
+**Información retirada:** Gemini CLI y Claude Code ya no presentan cajas de API key para sus flujos habituales de inicio de sesión, que se realizan en sus respectivas aplicaciones. Si se guardó una clave en versiones anteriores, la nueva ayuda permite **Borrar clave antigua** sin eliminar nada automáticamente. Los perfiles API separados pueden seguir mostrando campos relevantes.
+
+## Asistentes por proveedor desde la interfaz gráfica (0.10.49)
+
+En **Conexiones IA**, cada tarjeta tiene el apartado **? ¿Cómo conectarlo?**. Al desplegarlo se muestran instrucciones específicas según el cliente, comandos oficiales **para copiar** (nunca se ejecutan automáticamente), enlaces a las páginas de instalación o autenticación del proveedor y campos editables para guardar datos requeridos por esa modalidad.
+
+**Gemini CLI**, por ejemplo: 1) instala Node.js 20+; 2) revisa y ejecuta el comando `npm install -g @google/gemini-cli` si hace falta; 3) ejecuta `gemini` e inicia sesión con Google; 4) pulsa **Configurar automáticamente** en la tarjeta para integrar el MCP local sin eliminar otros servidores; 5) verifica dentro de Gemini con `/mcp list` o en consola con `gemini mcp list`. Esta vía **no requiere una API key** si usas la autenticación normal de Google. Desde 0.10.52, Gemini CLI no ofrece ninguna caja de API key; el perfil **Gemini API** mantiene su campo independiente.
+
+**Claude Code** muestra el instalador oficial según sistema, su flujo de inicio de sesión y `claude mcp list`. **Cursor y Copilot** muestran la configuración local en sus respectivos clientes. **Claude web, Grok, Gemini Interactions API y Mistral** muestran los requisitos de HTTPS público y enlaces a sus gestores de conectores; si un servicio requiere OAuth, su autorización sigue realizándose en la web/app oficial.
+
+En las modalidades apropiadas aparecen campos para **URL HTTPS pública del MCP**, **ID de conector**, **API key del proveedor** o **token Bearer del conector MCP**. Los campos sensibles son de tipo contraseña y se guardan de manera independiente en **VS Code SecretStorage**. El panel indica solamente que están guardados, permite sustituirlos o borrarlos y no muestra ni recupera su contenido al actualizar. Las URL no secretas se guardan como metadatos tras validación (sin credenciales incrustadas, consultas ni localhost). Al eliminar un perfil se borran también sus datos del asistente.
+
+La **API key del proveedor** no es la clave Bearer del MCP, ni sustituye el Tunnel ID de OpenAI. El recuadro **?** de ChatGPT explica también cómo crear el complemento MCP en ChatGPT, además de configurar el **Túnel OpenAI** (con Tunnel ID y clave de ejecución). **Guardar valores no crea un túnel HTTPS, ni los transmite a terceros, ni concede acceso remoto automáticamente**; el transporte seguro y las vinculaciones finales de proveedores web siguen pendientes.
+
+## Pasarelas multIA independientes desde el panel (0.10.48)
+
+Esta versión incorpora la **primera fase de seguridad necesaria antes de los túneles externos**. Cada conexión IA puede disponer de un servidor MCP autenticado propio, distinto de la instancia principal en el puerto 3000. No es un segundo coordinador: todas las pasarelas delegan en el mismo router MultiShell, con permisos restringidos en el servidor.
+
+Flujo completamente gráfico para una conexión local protegida:
+
+1. Activa MultiShell en la **ventana coordinadora** y entra en **Conexiones IA**. Crea o selecciona un perfil de IA.
+2. En **Acceso independiente · MCP**, selecciona una terminal existente y el nivel de permisos: **Solo lectura**, **Lectura y edición**, **Lectura y comandos** o **Completo**. Pulsa **Crear acceso aislado** y confirma el alcance. Sin una terminal autorizada no se crea la pasarela.
+3. Pulsa **Activar pasarela**. La tarjeta muestra una URL como `http://127.0.0.1:38100/mcp`. Es solo local. Cada perfil recibe un puerto diferente.
+4. **Copiar clave privada** recupera explícitamente el secreto individual de VS Code SecretStorage después de un aviso; la clave no aparece en el estado de Webview ni en los archivos del proyecto. El cliente MCP que soporte encabezados debe enviar `Authorization: Bearer <clave>` a la URL de ese perfil. No confundas esta clave MCP con las credenciales de la cuenta de la IA o las claves de proveedores de túnel.
+5. **Rotar clave** invalida la anterior y detiene solo esa pasarela; copia la nueva y vuelve a iniciarla. **Revocar** elimina la clave y la política. **Arranque automático** es opt-in y solo arranca un gateway local cuando la ventana tiene el rol de hub.
+
+**Límites de seguridad:** el ID de terminal debe coincidir exactamente, no se aceptan alias intercambiables. La raíz vinculada debe seguir siendo la misma. No se permite a clientes de esta pasarela crear/cerrar terminales o reconfigurar alias. Lectura incluye archivos, diagnósticos y skills permitidas dentro de la terminal. Los permisos siguen limitados también por los ajustes globales de MultiShell.
+
+**IMPORTANTE:** ninguna URL `127.0.0.1` funciona por sí sola en Claude web, Grok u otra IA que se conecte desde la nube. **La versión 0.10.48 no inicia túneles HTTPS públicos ni configura OAuth automáticamente**. Para esos servicios falta incorporar un transporte de túnel verificado y completar el proceso oficial de conexión; no debes exponer directamente el puerto 3000 ni los puertos 38100–38199 mediante reglas de firewall.
+
+## Seguridad de terminales y visibilidad de perfiles (0.10.47)
+
+**Conexiones IA** vuelve a mostrar todas las tarjetas de perfiles guardados: el contador y la lista deben coincidir. La corrección no elimina ni migra perfiles existentes.
+
+**Salir automáticamente** sigue siendo opcional por ventana o terminal. Solo envía `q` a paginadores/aplicaciones compatibles con sintaxis de comando reconocible y pantalla observada. Si el comando contiene comillas descompensadas, escapes de interpretación ambigua o un prompt secundario `>>`, MultiShell **no envía pulsaciones automáticas ni mata el programa**. Una terminal de usuario/principal que supere su tiempo de espera conserva el proceso y no se reutiliza hasta que se verifique su finalización. Corrige la orden en VS Code y verifica que esté inactiva.
+
+Para pruebas y mantenimiento, evita `exit` y los comandos `node -e` con comillas anidadas en la terminal PowerShell integrada. Utiliza scripts temporales inspeccionables y consulta el código de salida sin cerrar PowerShell.
+
+## Conexión personalizada según la IA (0.10.46)
+
+**Conexiones IA → Nueva** ofrece dos grupos separados: **Local / Escritorio** (Copilot, Claude Code, Gemini CLI, Cursor y otros) y **Nube / API** (Claude web/Cowork, Grok web, Gemini Interactions API, Mistral Work/Studio y Cursor remoto). Elegir un proveedor cambia la explicación de su transporte y requisitos.
+
+- **ChatGPT:** conservar Secure MCP Tunnel en su pestaña actual.
+- **Copilot / Claude Code / Gemini CLI / Cursor local:** pueden recibir la configuración del MCP de la máquina automáticamente desde su tarjeta, sin terminal. «Configurado» refleja únicamente el archivo de configuración, no la aceptación ni una sesión activa.
+- **Claude web/Cowork:** conectores personalizados se configuran en Claude; se conectan desde la nube y necesitan HTTPS público y autenticación OAuth o encabezados admitidos.
+- **Grok web:** conector MCP Custom de Grok; necesita URL HTTPS pública y credenciales apropiadas; Grok no puede conectar directamente a localhost.
+- **Gemini Interactions API:** acepta herramientas `mcp_server` sobre Streamable HTTP y nombres `snake_case`, con encabezados de autorización admitidos. No corresponde a Gemini web.
+- **Mistral Work/Studio:** conectores MCP registrados por los mecanismos oficiales, sujetos a roles y estado del producto.
+- **Cursor remoto:** Streamable HTTP a través de HTTPS, con autenticación adecuada.
+
+En perfiles cloud/API, la tarjeta muestra **Pendiente: requiere HTTPS autenticado** y un botón **Ver configuración oficial**. No se envía ni copia `127.0.0.1` como URL pública. **Esta versión no habilita un gateway de entrada ni registra conectores directamente en cuentas de terceros.** El siguiente hito debe añadir identidad de conexión, autenticación y autorización por solicitud antes de que pueda activarse un túnel compatible con proveedores adicionales.
+
+El MCP principal exige ahora credenciales de instalación para el túnel de ChatGPT; los clientes locales deben usar pasarelas autenticadas individuales. Cada pasarela puede limitarse a una terminal y un nivel de permisos.
+
+## Conexión local segura por pasarela IA (0.10.52)
+
+1. Abre **MultiShell → Conexiones IA** y crea o selecciona el perfil del cliente.
+2. En la tarjeta configura una **pasarela individual** con el ID exacto de la terminal y el nivel de permisos. Iníciala y, si la necesitas después de reiniciar, activa expresamente su arranque automático.
+3. Pulsa **Copiar configuración**. El ejemplo incluye la URL local de la pasarela (puertos 38100–38199) y `Authorization: Bearer YOUR_PER_CLIENT_GATEWAY_KEY`, que es **solo un marcador**.
+4. Copia la **clave individual de la pasarela** mediante su control local y introdúcela en la configuración segura del cliente, sustituyendo el marcador. No la pegues en chats, repositorios ni archivos compartidos. Los ejemplos copiados no contienen secretos.
+5. Comprueba la conexión en Gemini CLI, Claude Code, Cursor o Copilot. La extensión no puede verificar desde un archivo que la sesión de una IA está autenticada.
+6. Si ya había una entrada local antigua que apuntaba directamente al puerto 3000, puede mostrarse como **obsoleta/no autenticada**. Puedes abrirla y retirar las entradas anteriores que MultiShell gestionaba mediante **Desvincular**; no se eliminan automáticamente.
+
+**Cambio incompatible respecto a 0.10.45:** la opción antigua **Configurar automáticamente** no se ofrece; generaba una URL sin credenciales que dejó de funcionar cuando se protegió el servidor principal en 0.10.52. No se insertan claves internas en JSON de otros programas para ocultar el problema. Una integración totalmente automática necesitará un mecanismo seguro de entrega de credenciales específico de cada cliente. El archivo portable del plugin tampoco incluye claves.
+
+## Solicitudes y cinco clientes MCP concurrentes (0.10.44)
+
+«Solicitudes» tiene una única pantalla con título, contador, explicación y aprobaciones visibles. No hay un segundo desplegable. Cuando no existen solicitudes, aparece directamente el estado vacío.
+
+**Un coordinador en el puerto 3000 basta para gestionar cinco clientes MCP locales** en las pruebas con comandos ligeros. En una misma ventana de VS Code se pueden usar cinco terminales diferentes o distribuirlas entre ventanas. Los comandos se ejecutan simultáneamente en terminales distintas; sobre una misma terminal `shell_id` se encolan en orden FIFO.
+
+**Sin garantía de aislamiento por IA:** el servidor no autentica actualmente cada perfil de cliente y cualquiera que pueda invocar las herramientas MCP puede seleccionar shells conocidos. Para evitar conflictos al desarrollar simultáneamente, asigna un shell y directorio/worktree distintos a cada IA. No compartas archivos que se modifiquen en paralelo; los permisos y bloqueos de archivos no son todavía independientes por perfil. El puerto del servidor es un punto único de fallo y un túnel remoto puede imponer sus propios límites.
+
+Las cifras de las pruebas internas son sintéticas: no constituyen un benchmark de cinco modelos externos reales ni validan un gateway multIA remoto.
+
+## Navegación y perfiles locales multIA (0.10.43)
+
+La barra lateral ahora utiliza **Resumen**, **Terminales**, **Ventanas**, **Solicitudes**, **Skills**, **Conexiones IA**, **Túnel** y **Configuración**. Pulsa **Menú** para desplegar la navegación; al elegir una sección, el menú se pliega para ahorrar espacio vertical. Puerto MCP y salida automática de programas interactivos están en **Configuración**, no en la cabecera.
+
+En **Conexiones IA**, la tarjeta de ChatGPT abre la gestión privada del túnel OpenAI existente. El botón **Nueva** permite guardar perfiles **locales** para VS Code/GitHub Copilot, Claude Code, Gemini CLI, Cursor y otros clientes MCP compatibles. Se guarda únicamente el proveedor, nombre y fecha. **Copiar configuración** genera un ejemplo local para el puerto MCP activo y requiere confirmar el aviso. Después debes pegarlo manualmente en el cliente y comprobar que funciona.
+
+**Seguridad y alcance:** los perfiles no establecen automáticamente una conexión ni se marcan como conectados, no guardan API keys y no crean túneles remotos. Los clientes locales comparten los permisos generales del servidor MCP y todavía no existe autenticación diferenciada por IA. No publiques la URL 127.0.0.1 ni abras el puerto 3000 a Internet. Si tienes habilitadas herramientas de escritura o shell, cualquier cliente local al que añadas el servidor podrá solicitarlas; verifica qué cliente autorizas.
+
+Las configuraciones se copian como un fragmento para fusionar con el archivo del cliente, **no** sustituyas sus demás servidores MCP. Ejemplos: VS Code usa `.vscode/mcp.json` con `servers`, Gemini CLI usa `mcpServers` y `httpUrl`, Cursor usa `mcpServers` con `url`, Claude Code usa su comando `claude mcp add --transport http`. Los archivos de configuración externos **nunca se modifican automáticamente**.
+
+## Túnel integrado desde el panel (0.10.41)
+
+**Mejora 0.10.42:** el proceso del túnel creado por esta extensión puede recuperarse al recargar VS Code si existe una identidad verificable de su ejecución. En caso contrario se conserva como proceso externo o desacoplado y no se intenta detener. Para cambiar el puerto MCP, desconecta primero cualquier túnel gestionado: el perfil creado por MultiShell se actualizará con seguridad, mientras que los perfiles importados permanecerán inalterados.
+
+Abre la pestaña **Túnel**. Pulsa **Instalar cliente** para descargar y verificar Tunnel Client v0.0.19. Introduce el **Tunnel ID** existente, un nombre nuevo de perfil y la **API key** en el campo de contraseña y pulsa **Crear perfil**. También puedes reutilizar un perfil compatible (con selección y entrada local de la clave) sin sobrescribir su YAML.
+
+Después usa **Conectar** y, si deseas que se inicie en posteriores sesiones del coordinador, marca **Iniciar túnel automáticamente** y confirma el aviso. **Desconectar** pide confirmación, detiene únicamente el proceso propiedad de la extensión y desactiva el arranque automático; no mata túneles externos. **Actualizar clave** reemplaza el secreto guardado sin modificar el perfil.
+
+El indicador de estado distingue proceso gestionado, túnel externo, proceso conservado tras recarga y error de reintentos. La clave se envía una sola vez al host local de VS Code y se guarda en SecretStorage; no se devuelve al panel ni se escribe en archivos del proyecto. La pestaña no crea túneles remotos en la plataforma: el Tunnel ID y la clave deben existir previamente.
 
 ## 1. Iniciar y seleccionar una terminal
 

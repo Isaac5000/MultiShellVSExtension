@@ -5,6 +5,8 @@ import { MultiWindowController, WindowRouter, getSecret } from './multi-window';
 import { MultiShellPanel } from './panel';
 import type { SavedIdleProof } from './shell-manager';
 import { logger } from './utils/logger';
+import {TunnelManager} from './tunnel-manager';
+import {AiGatewayManager} from './ai-gateway-manager';
 
 export { MCPServer };
 
@@ -29,10 +31,13 @@ function updateUserSessions(context:vscode.ExtensionContext,
     return work;
 }
 let controller:MultiWindowController|undefined;
+let tunnelManager:TunnelManager|undefined;
+let aiGatewayManager:AiGatewayManager|undefined;
 let statusBar:vscode.StatusBarItem|undefined;
 let panel:MultiShellPanel|undefined;
 let starting:Promise<void>|undefined;
 let roleInfo='Off';
+let syncingTunnelPort=false;
 let applyingConfiguration=false;
 let pendingConfigurationChange=false;
 let activeTools:ToolConfiguration|undefined;
@@ -73,6 +78,17 @@ export function statusIndicator(online:boolean,port?:number):{text:string;color:
     return {text:online&&port?'MultiShell MCP: ON · '+port:online?'MultiShell MCP: ON':'MultiShell MCP: OFF',
         color:new vscode.ThemeColor(online?'testing.iconPassed':'editorWarning.foreground')};
 }
+async function restoreTunnelOwnership():Promise<void>{
+    const manager=tunnelManager;
+    if(!manager||!extensionContext?.secrets||syncingTunnelPort){return;}
+    try{
+        await manager.adoptDetached();
+        await manager.startIfEnabled();
+    }catch(error){
+        logger.warn('Tunnel recovery deferred: '+String(error));
+    }
+    void panel?.refresh();
+}
 function refreshStatus():void{
     if(!statusBar){return;}
     const online=Boolean(controller);
@@ -98,12 +114,22 @@ async function start(context:vscode.ExtensionContext):Promise<void>{
 
         const token=getSecret(tokenPath);
         const next=new MultiWindowController(port,token,workspace,async(router:WindowRouter)=>{
-            const server=new MCPServer(port,'127.0.0.1',router,tools,router);
+            const server=new MCPServer(port,'127.0.0.1',router,tools,router,{localToken:token});
             await server.start();
             return server;
         },(role,id)=>{
             roleInfo=role+' ('+id+')';
             refreshStatus();
+            // A worker can become hub after a crash; auto-recover the tunnel
+            // only when the new owner has an explicitly enabled profile.
+            if(role==='hub'&&controller){
+                void restoreTunnelOwnership();
+                void aiGatewayManager?.startIfEnabled();
+            }else if(role==='worker'){
+                // A worker must not retain a gateway pointing at a stale
+                // hub/router after an election or takeover.
+                void aiGatewayManager?.stopAll();
+            }
         },context.workspaceState.get<string>('multiShellPrimaryAlias'),
           context.workspaceState.get<string>('multiShellPrimaryId'),
           context.workspaceState.get<Array<{shell_id:string;initial_cwd:string;alias?:string}>>('multiShellUserSessions',[]),
@@ -147,6 +173,12 @@ async function start(context:vscode.ExtensionContext):Promise<void>{
             idleProofTicker=setInterval(()=>
                 queueIdleProofSnapshot(context,next),15_000);
             refreshStatus();
+            // Only the elected local hub may manage this machine's tunnel.
+            // Opt-in is OFF by default; existing external processes are untouched.
+            if(roleInfo.startsWith('hub')){
+                void restoreTunnelOwnership();
+                void aiGatewayManager?.startIfEnabled();
+            }
             logger.info('MultiShell MCP '+roleInfo+' started');
         } catch (error) {
             if (controller===next) {controller=undefined;}
@@ -179,9 +211,16 @@ async function applyConfigurationChange(context:vscode.ExtensionContext):Promise
         return;
     }
     applyingConfiguration=true;
+    if(oldPort!==requested.port){syncingTunnelPort=true;}
     try{
+        if(oldPort!==requested.port){
+            await tunnelManager?.assertPortChangeSafe(oldPort,requested.port);
+        }
         await stop(true);
         await start(context);
+        if(oldPort!==requested.port){
+            await tunnelManager?.syncPort(oldPort,requested.port);
+        }
         logger.info('MultiShell MCP configuration reloaded on port '+config().port);
     }catch(error){
         const cfg=vscode.workspace.getConfiguration(SETTING);
@@ -214,6 +253,8 @@ async function applyConfigurationChange(context:vscode.ExtensionContext):Promise
         catch(recoveryError){logger.error('Configuration recovery failed: '+String(recoveryError));}
         vscode.window.showErrorMessage('MultiShell MCP: could not apply port '+requested.port+' or tool permissions. Previous settings restored where possible. '+String(error));
     }finally{
+        syncingTunnelPort=false;
+        if(roleInfo.startsWith('hub')){void restoreTunnelOwnership();}
         applyingConfiguration=false;
         refreshStatus();
         if(pendingConfigurationChange){
@@ -236,6 +277,7 @@ async function applyConfigurationChange(context:vscode.ExtensionContext):Promise
 async function stop(preserveTerminals=false):Promise<void>{
     if(starting){try{await starting;}catch{}}
     const previous=controller;controller=undefined;activeTools=undefined;roleInfo='Off';
+    await aiGatewayManager?.stopAll();
     if(idleProofTicker){clearInterval(idleProofTicker);idleProofTicker=undefined;}
     if(previous){
         previous.localShells?.setIdleStateListener?.(undefined);
@@ -373,6 +415,140 @@ export async function activate(context:vscode.ExtensionContext):Promise<void>{
     idleProofTicker=undefined;
     context.subscriptions.push(vscode.commands.registerCommand(
         'multi-shell-mcp.listSkills',pickAvailableSkills));
+    aiGatewayManager=new AiGatewayManager(context,
+        ()=>controller&&roleInfo.startsWith('hub')?controller.router:undefined,
+        ()=>vscode.workspace.isTrusted!==false&&Boolean(controller)&&roleInfo.startsWith('hub'),
+        ()=>activeTools||config().tools,
+        ()=>vscode.workspace.isTrusted!==false);
+    tunnelManager=new TunnelManager(context,
+        ()=>controller?.listeningPort,
+        async()=>vscode.workspace.isTrusted!==false&&Boolean(controller)&&roleInfo.startsWith('hub'),
+        message=>logger.info(message),
+        ()=>getSecret(context.globalStorageUri.fsPath));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelInstall',async()=>{
+        try{
+            await vscode.window.withProgress({
+                location:vscode.ProgressLocation.Notification,
+                title:'MultiShell: installing verified Tunnel Client v0.0.19'
+            },async progress=>{
+                await tunnelManager!.install();
+                progress.report({message:'Verified against official SHA-256'});
+            });
+            vscode.window.showInformationMessage('MultiShell: Tunnel Client v0.0.19 installed and verified.');
+        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel installation: '+String(e));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelConfigure',async()=>{
+        if(vscode.workspace.isTrusted===false){
+            vscode.window.showWarningMessage('MultiShell: trust this workspace before configuring the tunnel.');
+            return;
+        }
+        const id=await vscode.window.showInputBox({
+            title:'MultiShell · Tunnel ID',
+            prompt:'Existing OpenAI Platform tunnel ID (tunnel_..., including namespaces when applicable)',
+            ignoreFocusOut:true,
+            validateInput:value=>!value.trim()?'Tunnel ID required':undefined
+        });
+        if(!id){return;}
+        const apiKey=await vscode.window.showInputBox({
+            title:'MultiShell · Tunnel runtime API key',
+            password:true,ignoreFocusOut:true,
+            prompt:'Stored in VS Code SecretStorage. Never written to settings.json or Git.'
+        });
+        if(!apiKey){return;}
+        try{
+            await tunnelManager!.configure(id,apiKey);
+            vscode.window.showInformationMessage('MultiShell: tunnel profile configured. Run Tunnel: Start when ready.');
+        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel configuration: '+String(e));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelReuseProfile',async()=>{
+        if(vscode.workspace.isTrusted===false){
+            vscode.window.showWarningMessage('MultiShell: trust the workspace before selecting a tunnel profile.');
+            return;
+        }
+        try{
+            const profiles=await tunnelManager!.findExistingProfiles();
+            if(!profiles.length){
+                vscode.window.showInformationMessage(
+                    'No compatible existing Tunnel Client profiles were found for the current MCP port.');
+                return;
+            }
+            const selected=await vscode.window.showQuickPick(profiles.map(profile=>({
+                label:profile.name,description:profile.file,profile
+            })),{title:'MultiShell · Reuse an existing tunnel profile without editing it'});
+            if(!selected){return;}
+            const key=await vscode.window.showInputBox({
+                title:'MultiShell · Tunnel runtime API key',
+                password:true,ignoreFocusOut:true,
+                prompt:'Enter the runtime key; legacy DPAPI files are never decrypted automatically.'
+            });
+            if(!key){return;}
+            await tunnelManager!.reuseExistingProfile(selected.profile,key);
+            vscode.window.showInformationMessage(
+                'MultiShell: existing profile selected read-only. Current external tunnels remain untouched.');
+        }catch(error){vscode.window.showErrorMessage('MultiShell reuse profile: '+String(error));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelUpdateKey',async()=>{
+        if(vscode.workspace.isTrusted===false){
+            vscode.window.showWarningMessage('MultiShell: trust the workspace before updating the tunnel key.');
+            return;
+        }
+        const key=await vscode.window.showInputBox({
+            title:'MultiShell · Replace tunnel API key',
+            password:true,ignoreFocusOut:true,
+            prompt:'Only VS Code SecretStorage is updated; no profile or external tunnel is changed.'
+        });
+        if(!key){return;}
+        try{
+            await tunnelManager!.updateApiKey(key);
+            vscode.window.showInformationMessage('MultiShell: runtime API key updated securely.');
+        }catch(error){vscode.window.showErrorMessage('MultiShell tunnel key: '+String(error));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelStart',async()=>{
+        try{
+            const result=await tunnelManager!.start();
+            vscode.window.showInformationMessage(result==='started'
+                ?'MultiShell: Tunnel Client started without an integrated terminal.'
+                :result==='occupied'
+                    ?'MultiShell: health port 8080 is occupied. External process left untouched.'
+                    :'MultiShell: a managed or detached tunnel instance already exists.');
+        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel: '+String(e));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelStop',async()=>{
+        try{
+            await tunnelManager!.stop();
+            vscode.window.showInformationMessage('MultiShell: stop requested for extension-owned tunnel.');
+        }catch(e){vscode.window.showWarningMessage('MultiShell tunnel: '+String(e));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelStatus',async()=>{
+        try{
+            const status=await tunnelManager!.status();
+            vscode.window.showInformationMessage(
+                'Tunnel v'+status.version+': '+(status.installed?'installed':'not installed')+
+                ', '+(status.configured?'configured':'not configured')+
+                ', health port '+(status.listenerOccupied?'occupied':'free')+
+                ', ready '+status.ready+
+                ', owner '+status.owner+', source '+status.source+
+                ', autostart '+(status.autostart?'ON':'OFF')+
+                (status.retryPaused?', automatic retries paused':'')+'.');
+        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel status: '+String(e));}
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelAutoStart',async()=>{
+        try{
+            const current=await tunnelManager!.status();
+            const next=!current.autostart;
+            if(next){
+                const approved=await vscode.window.showWarningMessage(
+                    'Enable automatic tunnel start when this trusted VS Code window becomes the MCP hub? '+
+                    'This uses the saved runtime API key. No remote tunnel will be created.',
+                    {modal:true},'Enable');
+                if(approved!=='Enable'){return;}
+            }
+            await tunnelManager!.setAutostart(next);
+            if(next){await tunnelManager!.startIfEnabled();}
+            vscode.window.showInformationMessage('MultiShell tunnel autostart: '+(next?'ON':'OFF'));
+        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel autostart: '+String(e));}
+    }));
+
     statusBar=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right,95);
     statusBar.command='multi-shell-mcp.toggleServer';
     context.subscriptions.push(statusBar);
@@ -381,7 +557,9 @@ export async function activate(context:vscode.ExtensionContext):Promise<void>{
             ...previous.filter(s=>s.shell_id!==shell.shell_id),
             {shell_id:shell.shell_id,initial_cwd:shell.initial_cwd,alias:shell.alias}
         ]),
-        async id=>updateUserSessions(context,previous=>previous.filter(s=>s.shell_id!==id)));
+        async id=>updateUserSessions(context,previous=>previous.filter(s=>s.shell_id!==id)),
+        ()=>tunnelManager,
+        ()=>aiGatewayManager);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(MultiShellPanel.viewType,panel));
     // A deliberate VSCode terminal close is final: forget its saved identity.
     // Reload Window keeps terminal instances alive and does not trigger this path.
@@ -436,6 +614,8 @@ export async function deactivate():Promise<void>{
     statusBar=undefined;
     panel?.dispose();
     panel=undefined;
+    tunnelManager?.dispose();
+    tunnelManager=undefined;
     extensionContext=undefined;
     logger.dispose();
 }

@@ -2,6 +2,118 @@
 
 [Versión en español](../es/historial.md) · [Project index](../../README.md)
 
+## 0.10.52 — Authenticated local clients and directory-listing protection
+
+- Fixed a broken post-0.10.51 integration: legacy automatic client setup still wrote an unauthenticated main-port URL. Such setup is now refused; old entries are shown as unverified while managed entries remain removable without deleting unrelated settings.
+- **Copy configuration** uses the per-profile scoped AI gateway URL and a Bearer placeholder, never the coordinator's internal token or a SecretStorage secret. Users must provide their client credential securely; this is not presented as fully automatic.
+- Removed the unusable automatic setup button. Updated bilingual documentation and plugin guidance to describe authenticated local gateways.
+- Added a deterministic directory-swap regression: `list_files_code` could reveal filenames from an outside folder when the directory changed during `readdir`. Listing now verifies entries and the directory before returning results.
+- Prior 0.10.51 protections remain. Total elimination of all filesystem races and the absence of a Windows Terminal window still require separate proof / a real post-install check.
+
+## 0.10.51 — Secured MCP listener and hidden Windows tunnel startup
+
+- Production main MCP HTTP requests now require the installation's private local token. Tunnel Client injects the credential from environment variables on the local MCP hop only; the secret is not saved in YAML or sent to ChatGPT.
+- Authentication runs before JSON parsing. The main listener and individual AI gateways both enforce a 32-active-request limit (HTTP 429).
+- Scoped reads use open file descriptors and verify containment and file identity before returning data; non-regular files are rejected. Atomic writes revalidate before publication, and copies after staging. Deterministic symlink-swap regressions were added.
+- Native VS Code tools allow an omitted `shell_id` only when exactly one shell exists; ambiguous selections are rejected.
+- Windows tunnel startup no longer requests a detached console process; this targets the observed Codex App Server / Windows Terminal startup window.
+- **Restart the managed tunnel once after upgrading**. An already-running tunnel process cannot receive new environment-backed authentication headers.
+- Portable Node.js does not provide descriptor-relative filesystem operations needed for an absolute guarantee against all ancestor rename races. These defenses cover the reproduced scenarios, not all possible schedules.
+
+## 0.10.50 — ChatGPT custom MCP plugin setup and streamlined guidance
+
+- ChatGPT's **AI Connections** guide explains that **Add custom MCP server → Create as a plugin** in ChatGPT is required separately from a running Secure MCP Tunnel.
+- Details include `tunnel_id` from Platform Tunnels, ChatGPT workspace association, a separate Tunnels Read + Use runtime API key, plugin name and optional description, **Tunnel** connection, compatible authentication, risk consent and tool verification.
+- Direct links to Platform Tunnels, runtime API keys, ChatGPT and the official custom MCP plugin setup guide. The runtime key belongs in **OpenAI Tunnel** only, never in ChatGPT's plugin form.
+- Removed unnecessary optional API key inputs from normal Gemini CLI and Claude Code login flows. Previously stored credentials remain until the user explicitly selects **Delete old key**.
+- Clarified local versus cloud client labels, bilingual instructions and the bundled portable plugin setup skill.
+
+## 0.10.49 — Guided per-AI setup and secure panel fields
+
+- Fixed a legacy-panel mock mismatch that could leave a Node test process running after an initial snapshot failure. Added `workspaceState` fallback for provider statuses, first-state readiness checks and unconditional test timer cleanup.
+
+- Every AI profile exposes a **?** guide with provider-specific prerequisites, official commands (copy-only, never run), verified documentation links and authentication cautions.
+- Gemini CLI: Node.js 20+, official npm install, Google browser sign-in, existing automatic local MCP setup and verification through `gemini mcp list`. Distinct from Gemini web and Gemini API.
+- Per-client data fields include a public HTTPS MCP URL, connector ID, optional provider API key and optional MCP Bearer token where appropriate. Secrets are stored only in VS Code SecretStorage, never in Memento/Webview snapshots/client configuration; individual fields can be cleared.
+- ChatGPT retains its existing OpenAI Tunnel tab with contextual help and official source links. The guide never executes installer commands.
+- Public HTTPS URL validation excludes credentials, URL parameters and private endpoints. Saving metadata never exposes ports, launches a tunnel or creates cloud vendor registrations.
+- Added 10-guide coverage, per-profile secure-storage tests, masked field rendering checks, and safe field actions.
+
+## 0.10.48 — Authenticated independent MCP AI gateways
+
+- Initial per-AI authenticated MCP endpoints: mandatory bearer authentication per HTTP request, independent 256-bit credentials in VS Code SecretStorage, stable localhost ports 38100–38199, no registration/control endpoints.
+- Server-side per-profile policy bounds an exact shell ID and original root, read/edit/command/full tool scopes; gateway clients cannot create or close terminals, rename aliases or enumerate other windows.
+- Panel actions configure isolated access, start/stop, copy local URL, copy key after a native warning, rotate, revoke and toggle opt-in autostart. Credentials never enter Webview snapshots.
+- Hub-role or Workspace Trust loss immediately blocks new traffic; revocation of one client preserves others.
+- Maximum 32 in-flight MCP requests per authenticated gateway (HTTP 429, Retry-After) without changing the legacy OpenAI listener.
+- Excluded local `.mcp.json`, connector backups and temporary files from VSIX and Git, with an archive privacy regression.
+- Five actual loopback MCP listeners tested simultaneously with independent tokens, cross-shell denial and concurrent command execution.
+- **Not yet implemented:** managed public HTTPS tunnel transport, provider-specific OAuth/header acceptance testing, live Claude web/Grok/cloud connector trials.
+
+## 0.10.47 — AI connection visibility and safe interactive escaping
+
+- Fixed saved AI profiles showing in the count but not as cards: the missing `id="aiFormHelp"` caused a null DOM reference and aborted rendering.
+- Added HTML/JS DOM-ID consistency and local/cloud profile card rendering tests.
+- Auto-exit now fails closed on unbalanced quotes and ambiguous shell escapes, never injecting `q` into an unidentified command or guessing with Enter/Ctrl+C.
+- PowerShell's `>>` continuation prompt is surfaced as a diagnostic hint only; no process termination or speculative keystrokes.
+- Documented safer command execution practices to avoid complex inline quoting and `exit` in persistent PowerShell sessions.
+
+## 0.10.46 — Provider-specific AI connections and client surfaces
+
+- AI Connections now distinguishes local desktop/CLI clients from cloud/API surfaces, with provider-specific MCP transports, prerequisites and official setup links.
+- Added pending profiles for Claude web/Cowork, Grok web, Gemini Interactions API, Mistral Work/Studio and Cursor remote, retaining existing Copilot, Claude Code, Gemini CLI, Cursor local, and ChatGPT Tunnel Client.
+- Remote profiles explicitly require a future authenticated HTTPS gateway; they cannot produce unsafe localhost snippets, launch public tunnels or claim connectivity. Cloud account auth and per-client authorization remain outstanding.
+- Added provider registry, panel, persistence and invalid-remote-config tests.
+- No public exposure of MCP port 3000 and no active extension replacement.
+
+## 0.10.45 — Automatic local MCP client setup from the panel
+
+- **AI Connections** offers **Configure automatically**, **Refresh status**, **View file** and **Disconnect** for Copilot, Gemini CLI, Cursor and Claude Code, without user-run CLI commands or JSON copying.
+- Copilot uses portable user `mcp-config.json`; Gemini uses user `settings.json`; Cursor uses user `mcp.json`; Claude Code uses the opened workspace's `.mcp.json`.
+- Structured JSON/JSONC merge, backups of pre-existing configuration, exclusive writes, concurrent modification and symlink checks, refusal of incompatible entries, and removal only of extension-owned settings.
+- Native confirmation and Workspace Trust gates. No independent AI authorization or external login is bypassed. A configuration entry does not prove the AI has established a live MCP session.
+
+## 0.10.44 — Flat Requests view and five-client concurrency coverage
+
+- Requests now displays one heading, count, approval controls and empty state without a second nested disclosure.
+- Five independent MCP HTTP clients tested against one coordinator: five shells on five workers and five shells in one worker. Verified cross-shell concurrency, same-shell FIFO and queue cleanup.
+- A 30-second local synthetic soak completed 6,756 commands (48 ms p95) without unexpected errors. These are NOT real-model workloads.
+- Important boundary: local AI setup profiles do not authenticate callers; one MCP client can address another client's shell. Per-client authorization and a protected gateway remain outstanding.
+- Request-scoped HTTP cancellation now reaches tool dispatch through AsyncLocalStorage; the 100-request/80-cancellation case passed three repeats and the complete regression log recorded 103 passing suites. Saturation remains an area for continued monitoring.
+
+## 0.10.43 — Structured sidebar and multi-AI local MCP profiles
+
+- Collapsible vertical navigation, Overview page and separated Requests, AI Connections and Settings, retaining existing terminals, skills and OpenAI tunnel controls.
+- Local setup profiles for VS Code/Copilot, Claude Code, Gemini CLI, Cursor and generic MCP clients. Strict profile-name validation, secret-free persistence, clipboard examples and native confirmation before sharing access to MCP tools.
+- Profiles do not imply verified client connections or independent authorization. No remote endpoint or public gateway is enabled.
+- Navigation, UI authorization, storage, generated snippet and regression tests. Live additional-client and per-identity gateway tests remain pending.
+
+## 0.10.42 — Tunnel recovery and process safety
+
+- Exclusive stale-lock recovery prevents two VS Code windows from deleting each other's fresh locks; crash-leftover recovery guards fail closed.
+- A detached extension-owned tunnel can be reattached after Reload Window only when PID, kernel start time, executable path and command fingerprint match. Ambiguous or pre-0.10.42 processes are never adopted or killed.
+- MCP port changes synchronize extension-owned YAML profiles atomically while idle, retaining other fields and comments. Active managed tunnels block the port change; imported profiles remain read-only.
+- New concurrent lock, native identity, reattachment and port regression tests; stabilized asynchronous port and FIFO tests. All 98 suites, TypeScript, ESLint and npm audit passed on Windows. Physical Linux/macOS and remote end-to-end acceptance remain pending.
+
+## 0.10.41 — Tunnel management in the sidebar
+
+- New bilingual **Tunnel** tab for status, verified installation, profiles, Tunnel ID, masked API key, connect, disconnect and autostart.
+- Actions gated by Workspace Trust, with native disconnect/autostart confirmations and preservation of external tunnel processes.
+- No credentials in webview snapshots. Additional panel-action, secret non-disclosure and regression tests.
+- Windows compilation, lint, tests and VSIX packaging; live remote-tunnel and physical Linux/macOS acceptance remain outstanding.
+
+## 0.10.40 — Integrated Tunnel Manager using Tunnel Client v0.0.19
+
+- First opt-in TypeScript tunnel manager; local commands for verified installation, configuration, start, status and stopping owned processes.
+- Official v0.0.19 with pinned SHA-256 for six Windows, Linux and macOS x64/ARM64 packages.
+- Extension global-storage profile, `SecretStorage` runtime API key, safe `init` and `doctor` without PowerShell launcher scripts.
+- Autostart remains off by default; only the MCP hub may launch the tunnel and external instances are not replaced.
+- Added release integrity and manager safety tests; physical cross-platform acceptance remains pending.
+
+- Safe reuse of existing profiles with strict local target, credential reference and official OpenAI control-plane host validation.
+- Persistent cross-process launch lock to prevent duplicates across reloads and windows; bounded backoff and retry circuit breaker.
+- Additional simulated tests of the complete tunnel lifecycle, recovery, locks and cross-platform profile lookup.
+
 ## 0.10.39 — Complete migration to MCP SDK v2
 
 - Removed the SDK v1 direct dependency, legacy HTTP transport and legacy server registration implementation.

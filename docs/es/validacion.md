@@ -1,8 +1,112 @@
 # Pruebas, validación y diagnóstico
 
+**Resultado 0.10.51:** 116/116 suites automatizadas superadas en cinco tandas (24 + 23 + 23 + 23 + 23); compilación TypeScript, empaquetado VSIX/plugin, ESLint y `git diff --check` correctos. Auditoría npm de dependencias de producción: 0 vulnerabilidades notificadas. Pendientes las pruebas manuales de reinicio de VS Code, ventana de Windows Terminal y conexión ChatGPT mediante un túnel real tras instalar el VSIX.
+
+
+## Validación 0.10.52 — Pasarelas de IA y listados protegidos
+
+**Resultado de regresión:** 118/118 suites automatizadas superadas en cinco tandas (24 + 24 + 23 + 24 + 23), incluida la prueba nueva de intercambio de directorios y la detección de entradas MCP antiguas sin autenticación. El catálogo de proveedores ya no anuncia instalación automática para conexiones que requieren un gateway con clave.
+
+Las pruebas `test-authenticated-local-config.cjs` y `test-ai-panel.cjs` verifican que no se aceptan entradas antiguas sin autenticación ni se escriben archivos de configuración inservibles. `test-ai-connection-render.cjs` verifica la retirada del botón antiguo y la recuperación de la opción **Desvincular** para instalaciones anteriores. `test-list-file-race.cjs` reproduce una lista de directorio externo durante una sustitución y exige su rechazo. El marcador de Bearer se copia sin revelar el secreto real.
+
+**Pendiente:** comprobar en la instalación real que Gemini/Claude/Cursor/Copilot pueden usar sus respectivas pasarelas después de introducir la credencial por un método seguro; validar asimismo que no aparezca Windows Terminal al abrir VS Code con la nueva versión y que el túnel de ChatGPT siga funcionando. Las carreras del sistema de archivos se han mitigado, no eliminado con una garantía nativa formal.
+
+## Validación 0.10.51 — Seguridad MCP y ventana de consola
+
+Regresiones: `test-runtime-hardening.cjs` exige autenticación en el servidor principal, rechazo 401 previo al análisis del JSON y límite de 32 solicitudes con HTTP 429; `test-security-audit-probes.cjs` comprueba que una carrera simulada de enlaces simbólicos no devuelve ni reemplaza archivos señuelo externos; `test-native-shell-compat.cjs` verifica la resolución segura de terminal única y el rechazo de ambigüedad; `test-tunnel-lifecycle.cjs` valida las cabeceras inyectadas por entorno y el modo de arranque de Windows.
+
+**Comprobación manual posterior a instalar:** detener e iniciar una vez el túnel administrado desde el panel y reiniciar VS Code. Confirmar que ya no aparece una ventana separada de Windows Terminal y que ChatGPT puede invocar herramientas mediante el mismo `tunnel_id`. No se ha cerrado ni terminado ninguna terminal de usuario durante estas pruebas.
+
+**Límite técnico:** sin API nativa `openat2` / apertura relativa a descriptores no puede demostrarse ausencia total de carreras adversariales con antecesores renombrados entre operaciones. Se valida el rechazo de las condiciones de carrera reproducidas, no una garantía absoluta en todos los sistemas operativos.
+
+## Validación 0.10.51 — Integración ChatGPT y limpieza de claves
+
+`test-chatgpt-plugin-guide.cjs` comprueba que la ayuda de ChatGPT contiene los campos y pasos oficiales para crear un complemento **Add custom MCP server** mediante conexión **Tunnel**, asociando el mismo `tunnel_id` en Platform, MultiShell y ChatGPT. Valida los cuatro enlaces oficiales (Tunnels, claves de ejecución, ChatGPT y guía de plugins) y que el formulario del complemento **nunca solicita la API key de ejecución del túnel**. Las pruebas de onboarding verifican que Gemini CLI/Claude Code no ofrecen campos de API key innecesarios y que los secretos heredados solo se borran con una acción explícita.
+
+**Regresión:** 113/113 suites en cuatro tandas (29 + 29 + 29 + 26), TypeScript y ESLint correctos. Esta validación comprueba instrucciones y comportamiento del panel, pero **no crea un complemento real dentro de una cuenta ChatGPT**, ni verifica que el túnel de esa cuenta esté asociado a un espacio de trabajo concreto.
+
+## Validación 0.10.49 — Asistentes y secretos por proveedor
+
+Corrección de regresión: la prueba del panel heredada simulaba `workspaceState` sin `globalState`. La lectura del nuevo gestor de credenciales ya admite esta configuración de pruebas, y `test-panel.cjs` espera el primer estado válido y libera los temporizadores incluso tras un error. El bloqueo en `node test/test-panel.cjs` quedó reproducido, diagnosticado y resuelto; se comprobó su finalización con código 0. Las **112 suites de regresión** superan las cuatro tandas (29 + 29 + 29 + 25).
+
+`test-ai-provider-onboarding.cjs` valida que los 10 tipos de cliente tienen guías en español e inglés, comandos y enlaces oficiales HTTPS, campos adecuados por proveedor, validación de URL pública y aislamiento de claves en SecretStorage. Comprueba que las claves no entran en los metadatos ni en snapshots, rechaza URL HTTP/localhost/credenciales incrustadas, no permite campos de otro proveedor y confirma el borrado selectivo. `test-ai-panel.cjs` verifica guardar y borrar desde el panel, avisos de confianza, prohibición de URLs inseguras y apertura de enlaces desde un catálogo autorizado. `test-ai-connection-render.cjs` comprueba los desplegables **?**, comandos, inputs de contraseña vacíos tras guardar y ausencia de credenciales en HTML.
+
+**Límite:** instalar un cliente local y verificar su conexión MCP requiere una prueba real en la aplicación del usuario. Estas guías no constituyen una prueba de funcionamiento con Claude web, Grok ni de OAuth/túneles públicos.
+
+## Validación 0.10.48 — Identidades y aislamiento multIA
+
+Pruebas nuevas: `test-ai-access.cjs` verifica comparación de secretos Bearer, exactitud del shell ID, rechazo de ejecución/edición ajena, límites globales y fallo seguro cuando la raíz original cambia. `test-ai-gateways.cjs` crea cinco servidores MCP reales independientes sobre loopback, con cinco identidades distintas, ejecuta peticiones concurrentes y verifica credenciales cruzadas (401), fallos de permisos, acceso a otra terminal, ausencia de rutas de administración, validación de origen (403), rotación/revocación individual, autostart opt-in y rechazo inmediato ante pérdida del hub (503). `test-ai-panel.cjs` verifica confirmaciones, estados de UI y que ningún secreto se envía al Webview.
+
+Pruebas adicionales: `test-ai-gateway-limits.cjs` mantiene 32 peticiones MCP concurrentes bloqueadas, comprueba que la solicitud 33 recibe HTTP 429 con `Retry-After: 1` y que las credenciales inválidas obtienen 401 incluso bajo saturación. `test-package-privacy.cjs` inspecciona el VSIX para impedir que `.mcp.json`, respaldos locales y temporales de credenciales se distribuyan.
+
+**Limitaciones:** clientes HTTP MCP simulados; no se ha iniciado ni configurado una conexión HTTPS desde Claude/Grok. La integración con las cuentas de proveedores y túneles externos sigue pendiente. El puerto 3000 anterior conserva su funcionamiento local habitual para OpenAI Tunnel Client; la política de esta versión se aplica a los nuevos endpoints protegidos, no a todo el MCP local preexistente.
+
+## Validación 0.10.47 — Tarjetas IA y escapes seguros
+
+Pruebas nuevas:
+- `test-ai-connection-render.cjs`: todos los ID utilizados por el script existen en el HTML y dos perfiles (local y remoto) generan sus tarjetas completas.
+- `test-interactive-escape-guards.cjs`: comillas sin cerrar, barras invertidas ambiguas, escapes y caracteres de control desactivan reconocimiento de paginador; comandos correctamente entrecomillados siguen admitidos. El prompt `>>` solo produce una indicación.
+- `test-interactive-safety.cjs` ampliada con pantallas de paginador simuladas bajo comandos mal entrecomillados: no se envía `q` a esos procesos.
+
+**Resultado de regresión:** 107 de 107 suites superadas en cuatro tandas; compilación TypeScript, ESLint y documentación bilingüe correctos. Quedan fuera del alcance de estas pruebas las sesiones reales de IAs externas y la fiabilidad absoluta de comandos arbitrarios mal escritos.
+
+## Validación 0.10.46 — Proveedores específicos y límites de conexión cloud
+
+`test-ai-provider-catalog.cjs` comprueba el catálogo de cinco modalidades remotas y cuatro configuraciones locales más cliente genérico, URLs oficiales HTTPS, modos de transporte, descripciones bilingües, persistencia sin secretos y rechazo de fragmentos `localhost` para proveedores cloud. `test-ai-panel.cjs` comprueba que los botones de la interfaz no intentan configurar el MCP local para Claude web, no declaran conexión remota y abren solo la página oficial almacenada en el catálogo.
+
+**Límites:** las pruebas no implican conexiones reales con proveedores cloud. No existe un gateway HTTPS remoto integrado, tokens OAuth emitidos por MultiShell ni permisos separados por perfil. No hay acceso público añadido al puerto MCP local. Instalar o autenticar un proveedor externo sigue requiriendo su propia interfaz y método oficial.
+
+## Validación 0.10.45 — Configuración automática desde Conexiones IA
+
+Pruebas: `test-ai-client-config.cjs` verifica Copilot, Gemini CLI, Cursor y Claude Code con rutas de prueba temporales, conservación de configuraciones JSONC y comentarios, copia de seguridad de archivos existentes, instalación idempotente, desvinculación de entradas propias, recuperación tras cambios de puerto, rechazo de colisiones, enlaces simbólicos y bloqueos. `test-ai-panel.cjs` verifica las confirmaciones de configurar y desvincular, permisos de Workspace Trust y la imposibilidad de eliminar un perfil gestionado sin retirar antes su entrada MCP. `test-panel-layout.cjs` verifica la presencia de botones de configuración.
+
+**Validación automatizada de Windows:** 104 de 104 suites superadas en cuatro tandas, TypeScript y ESLint correctos. Las pruebas de instalación se realizan exclusivamente sobre configuraciones de prueba; **no se han alterado perfiles reales** de Copilot, Gemini, Claude o Cursor.
+
+**Limitaciones:** no se ha probado el inicio real de ninguna de esas aplicaciones ni su autenticación o descubrimiento de herramientas después de cargar los archivos. «Configurado» certifica únicamente la entrada MCP presente en el archivo, no una conexión de la IA. El servidor MCP sigue sin autenticar identidades por cliente ni restringir shells por proveedor.
+
+## Validación 0.10.44 — Solicitudes, concurrencia y carga multIA
+
+Pruebas `test-panel-layout.cjs` y `test-panel.cjs` actualizadas: «Solicitudes» ocupa una única pantalla, no contiene `<details>` interno y preserva la aprobación/rechazo. Navegación por teclado y otras páginas sin cambios.
+
+Nuevas suites:
+- `test-five-ai-clients.cjs`: cinco clientes HTTP MCP independientes, un coordinador y cinco trabajadores; 147 llamadas de prueba. Ejecución concurrente en shells distintos, FIFO al compartir un shell, eliminación de colas, verificación de respuestas y prueba negativa de falta de aislamiento de identidad.
+- `test-five-ai-one-window.cjs`: cinco clientes, un coordinador y cinco terminales simuladas en una sola ventana; 207 llamadas, cinco directorios separados, bloqueo de uso compartido no autorizado y progreso de otras terminales cuando una está bloqueada.
+- `MULTISHELL_SOAK_SECONDS=30 node --expose-gc test/connection-soak.cjs`: 6.756 comandos simulados en 30,1 s, p95 48 ms, lag del event loop p99 46,56 ms, cero errores inesperados, crecimiento de memoria dentro del límite del test.
+
+**Verificación final de código:** la cancelación HTTP se propaga a las herramientas por solicitud mediante `AsyncLocalStorage`, combinando su señal con la del SDK cuando está disponible. La regresión de 100 peticiones y 80 cancelaciones superó **3 ejecuciones consecutivas**; el registro de `npm test` contiene el resultado **PASS: 103 test suites** tras la modificación. También pasaron ESLint y auditoría npm (0 vulnerabilidades conocidas). El canal de terminal MCP se recuperó durante el test integrado, por lo que la confirmación se obtuvo del registro, no de la respuesta de salida del comando.
+
+Se había observado intermitencia antes de la corrección bajo saturación; no se afirma fiabilidad del 100 % en todos los escenarios. Un experimento de diagnóstico sin cierre correcto fue excluido de las suites. La conexión con cinco clientes reales y la validación en Linux/macOS siguen pendientes.
+
+**Límites de la evidencia:** se utilizaron workers/terminales simulados, no cinco aplicaciones de IA reales. Las mediciones corresponden al equipo y a comandos muy ligeros. Las colas son independientes por `shell_id`, pero ninguna identidad de cliente impide llamar a otro shell ni existe un bloqueo general de edición de archivos por proveedor. Usar worktrees/directorios separados para tareas de escritura en paralelo. No exponer la URL MCP local en redes públicas.
+
+## Validación 0.10.43 — Menú estructurado y conexiones locales
+
+Nuevas pruebas `test-panel-navigation.cjs`, `test-ai-connections.cjs` y `test-ai-panel.cjs`: navegación y vista activa, persistencia local sin credenciales, ejemplos de configuración para clientes MCP, avisos explícitos de riesgo, rechazo en proyectos no confiables y no exposición de procesos remotos. Los cambios de diseño no alteran la ejecución ni los permisos de las terminales existentes.
+
+No se afirma compatibilidad funcional con una IA hasta hacer pruebas de extremo a extremo desde su cliente real. Los perfiles locales comparten actualmente los permisos globales del servidor.
+
+## Validación 0.10.42 — Seguridad de bloqueo, recuperación y puertos
+
+**98 de 98 suites automatizadas superadas en Windows**, ejecutadas en cuatro tandas tras estabilizar las pruebas de reinicio de puerto y FIFO. TypeScript, ESLint y `npm audit --audit-level=low` correctos: cero vulnerabilidades conocidas. Las pruebas nuevas cubren varias ventanas compitiendo por el mismo bloqueo; sustitución durante una consulta; guardias de recuperación huérfanos; identidad de un proceso real en Windows; recarga y parada simuladas; cambio atómico del puerto y preservación del YAML. Se rechaza la adopción sin prueba suficiente.
+
+El túnel actualmente activo no se modifica durante la validación; quedan pendientes las pruebas completas de conectividad remota y la ejecución física en Linux/macOS.
+
+## Validación 0.10.41 — Pestaña Túnel integrada
+
+Se han añadido pruebas de regresión del panel para creación y selección de perfiles, instalación, conexión, desconexión confirmada, arranque automático, validación del host local y ausencia de la API key en los mensajes de vuelta. Las pruebas usan dobles del gestor; no implican una conexión de producción. **95 de 95 suites automatizadas superadas** en Windows, distribuidas en cuatro tandas para evitar los timeouts de la terminal MCP. TypeScript y ESLint también han finalizado correctamente. Las pruebas de aceptación manual del VSIX y de un túnel remoto real siguen pendientes.
+
+## Validación 0.10.40 — Gestor de Tunnel Client v0.0.19
+
+- **94 de 94 suites automatizadas superadas** en Windows, incluyendo pruebas adicionales de los comandos de la extensión, instalación de archivos ZIP, integridad SHA-256, bloqueo interproceso, reutilización de perfiles y simulación de arranque, reinicio y parada de Tunnel Client.
+- TypeScript, ESLint, documentación bilingüe y `npm audit --audit-level=low`: correctos; la auditoría informa **0 vulnerabilidades conocidas**.
+- El asistente utiliza `ExtensionContext.secrets` para la API key, crea perfiles aislados con `init` y no sobrescribe ni detiene un túnel que ya estaba ejecutándose.
+- Compatibilidad del instalador configurada para Windows, Linux y macOS en x64 y ARM64. **Las pruebas ejecutadas no incluyen instalaciones físicas en Linux ni macOS.**
+- **Pendiente:** prueba completa contra un túnel real iniciado por los comandos nuevos, con credenciales del usuario. No se ha realizado para preservar la sesión externa actual.
+
+
 [English](../en/validation.md) · [Índice](../../README.md)
 
-Estado de referencia: **MultiShell MCP Server 0.10.37**. La validación incluye compilación, ESLint, auditoría de npm, regresiones, carga HTTP y ventanas reales de VS Code con perfiles separados. Los resultados actuales y sus límites se detallan al final; las pruebas locales no acreditan la continuidad del túnel externo.
+Estado de referencia: **MultiShell MCP Server 0.10.51**. La validación incluye compilación, ESLint, auditoría de npm, regresiones, carga HTTP y ventanas reales de VS Code con perfiles separados. Los resultados actuales y sus límites se detallan al final; las pruebas locales no acreditan la continuidad del túnel externo.
 
 Las regresiones de skills comprueban la lectura de `SKILL.md`, metadatos YAML, aislamiento entre ventanas, protección de rutas, recursos `skill://index.json` y permisos de lectura. Véase [Agent Skills](skills.md).
 

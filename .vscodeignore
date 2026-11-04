@@ -1,5 +1,6 @@
 .git/**
 .vscode/**
+.github/**
 .vscode-test/**
 src/**
 test/**
@@ -29,3 +30,10 @@ out/**
 # relative links remain valid in both GitHub and the packaged extension.
 # External tunnel distribution is never part of the extension installer.
 tunnel-client-v*/**
+
+# Never distribute project-local AI connector settings or credential-related backups.
+.mcp.json
+.mcp.json.multishell-backup-*
+*.multishell-backup-*
+*.multishell-writing-*
+*.multishell.lock/**

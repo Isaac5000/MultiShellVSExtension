@@ -134,16 +134,25 @@ const view = {
     return { dispose() {} };
   }
 };
+let activePanel;
 async function main() {
   assert.equal(MultiShellPanel.viewType, 'multi-shell-mcp.sessions');
   const panel = new MultiShellPanel(ctx, () => controller);
+  activePanel=panel;
   panel.resolveWebviewView(view);
-  await wait(30);
+  // Await actual asynchronous Webview state rather than assuming a fixed 30 ms
+  // delay; under loaded CI the initial secret-state/status read can take longer.
+  for(let i=0;i<250&&!sent.some(x=>x.type==='state');i++){await wait(10);}
+  if(!sent.some(x=>x.type==='state')){
+    throw Error('No initial panel state: '+JSON.stringify(sent.filter(x=>x.type==='error')));
+  }
   assert.match(view.webview.html, /id="shellForm"/);
   assert.match(view.webview.html, /id="tabSkills"/);
-  assert.match(view.webview.html, /<details class="requests-disclosure"/);
-  assert.ok(view.webview.html.indexOf('id="localWindow"')<view.webview.html.indexOf('id="requestsDisclosure"'));
-  assert.ok(view.webview.html.indexOf('id="requestsDisclosure"')<view.webview.html.indexOf('id="tabShells"'));
+  assert.doesNotMatch(view.webview.html, /<details class="requests-disclosure"/);
+  assert.match(view.webview.html, /id="requestsEmpty"/);
+  assert.ok(view.webview.html.indexOf('id="localWindow"')<view.webview.html.indexOf('id="requestsPage"'));
+  assert.ok(view.webview.html.indexOf('id="tabRequests"')<view.webview.html.indexOf('id="requestsList"'),
+    'Requests now live in a dedicated page of the structured menu');
   assert.match(view.webview.html, /id="windowInteractive"/);
   assert.equal(sent.findLast(m=>m.type==='state').snapshot.requests.length,1);
   assert.match(view.webview.html, /media\/panel.js/);
@@ -261,6 +270,9 @@ async function main() {
   );
 }
 main().catch(e => {
+  // Even a failed assertion must dispose the panel's 3 s refresh interval;
+  // otherwise this standalone regression process hangs indefinitely.
+  activePanel?.dispose();
   console.error(e);
   process.exitCode = 1;
 });

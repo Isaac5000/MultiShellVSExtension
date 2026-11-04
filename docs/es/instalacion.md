@@ -2,16 +2,16 @@
 
 [English](../en/installation.md) · [Índice](../../README.md)
 
-Guía vigente para **MultiShell MCP Server 0.10.39**. Requiere **Visual Studio Code 1.99 o posterior**.
+Guía vigente para **MultiShell MCP Server 0.10.52**. Requiere **Visual Studio Code 1.99 o posterior**.
 
 ## Instalar o actualizar desde VSIX
 
-El instalador es `multi-shell-mcp-server-0.10.29.vsix`. Se genera en la raíz del proyecto; un clon de Git **no lo contiene**, porque los paquetes generados están excluidos del repositorio.
+El instalador es `multi-shell-mcp-server-0.10.52.vsix`. Se genera en la raíz del proyecto; un clon de Git **no lo contiene**, porque los paquetes generados están excluidos del repositorio.
 
 Desde VS Code, ejecuta **Extensions: Install from VSIX...**, selecciona el archivo y después **Developer: Reload Window**. También puedes utilizar:
 
 ```powershell
-code --install-extension .\multi-shell-mcp-server-0.10.29.vsix --force
+code --install-extension .\multi-shell-mcp-server-0.10.52.vsix --force
 ```
 
 La sintaxis anterior corresponde a PowerShell. En Linux, sustituye `.\` por `./`.
@@ -31,7 +31,7 @@ npm run lint
 npm run package
 ```
 
-El resultado es `multi-shell-mcp-server-0.10.29.vsix`. Para realizar la batería completa de validación de Windows, incluida auditoría de dependencias de producción e inspección del paquete:
+El resultado es `multi-shell-mcp-server-0.10.52.vsix`. Para realizar la batería completa de validación de Windows, incluida auditoría de dependencias de producción e inspección del paquete:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-windows.ps1
@@ -61,7 +61,7 @@ Después de ejecutar `npm run package`, con Python 3 puedes generar un archivo p
 python scripts/make-portable.py
 ```
 
-En Windows también funciona `py scripts/make-portable.py`. El ZIP `MultiShell-MCP-Server-0.10.29-portable.zip` contiene la carpeta `MultiShell-MCP-Server-0.10.29` con código fuente, pruebas, scripts, documentación, instalador VSIX y manifiesto de integridad SHA-256.
+En Windows también funciona `py scripts/make-portable.py`. El ZIP `MultiShell-MCP-Server-0.10.52-portable.zip` contiene la carpeta `MultiShell-MCP-Server-0.10.52` con código fuente, pruebas, scripts, documentación, instalador VSIX y manifiesto de integridad SHA-256.
 
 Se excluyen `node_modules`, `out`, `dist`, archivos de configuración privados, sesiones y datos del túnel. Verifica su contenido antes de compartirlo.
 

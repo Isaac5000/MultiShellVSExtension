@@ -18,3 +18,10 @@ tunnel-client-v*/
 
 # Local reports from reproducible live-MCP diagnostics
 scripts/probe-live-*-results.json
+
+# Never distribute project-local AI connector settings or credential-related backups.
+.mcp.json
+.mcp.json.multishell-backup-*
+*.multishell-backup-*
+*.multishell-writing-*
+*.multishell.lock/**

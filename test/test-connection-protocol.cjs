@@ -20,9 +20,15 @@ const {environment,rpc,tool,wait}=require('./connection-fixture.cjs');
    }));
    assert.equal(batch.reduce((sum,n)=>sum+n,0),20);
   }
-  const sameIds=await Promise.all(Array.from({length:60},(_,index)=>tool(env.port,'execute_shell_command_code',
-   {shell_id:'connection_'+(index%3),command:'collision_'+index,timeout:5000},{id:1})));
-  sameIds.forEach((value,index)=>assert.equal(JSON.parse(value.output).command,'collision_'+index));
+  // Still cover 60 colliding IDs, but respect the 32-request security cap.
+  for(let start=0;start<60;start+=20){
+   const sameIds=await Promise.all(Array.from({length:20},(_,index)=>{
+    const n=start+index;
+    return tool(env.port,'execute_shell_command_code',
+     {shell_id:'connection_'+(n%3),command:'collision_'+n,timeout:5000},{id:1});
+   }));
+   sameIds.forEach((value,index)=>assert.equal(JSON.parse(value.output).command,'collision_'+(start+index)));
+  }
   const badBodies=[['{',400],['null',400],['[]',400],['42',400],['"text"',400],
    ['{"jsonrpc":"2.0","method":8,"id":1}',400],
    ['{"jsonrpc":"2.0","method":"unknown_method","id":1}',200]];

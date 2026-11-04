@@ -2,7 +2,7 @@
 
 [English](../en/compatibility.md) · [Índice](../../README.md)
 
-MultiShell MCP 0.10.39 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
+MultiShell MCP 0.10.52 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
 
 Para obtener los nombres de las skills del proyecto y de Codex, usa `list_skill_names_code(shell_id="fallouttraduccion",scope="all")`. Si el conector de ChatGPT todavía no conoce esta herramienta, ejecuta la consulta de control `execute_shell_command_code(command="skills fallouttraduccion",cwd="@mcp")`. No envía órdenes a PowerShell. Para incluir las skills globales, activa `multi-shell-mcp.globalCodexSkills` previa autorización; está desactivado por defecto por seguridad. [Guía completa](skills.md).
 
@@ -61,6 +61,19 @@ read_file_code(path="@shell:mi_proyecto/src/main.ts")
 Las operaciones de copia y movimiento requieren que **ambos extremos pertenezcan al mismo shell**. Una ruta fuera del ámbito permitido o sin selector válido se rechaza.
 
 La capa heredada está pensada para **consultas y operaciones sobre shells existentes**. Para utilizar una herramienta nueva como `create_user_shell_code`, el conector debe descubrir su esquema actual. Si todavía no aparece, actualiza o reconecta el conector tras instalar el VSIX; no cambies las claves o el perfil del túnel para resolver un esquema en caché.
+
+## Gestor de túnel integrado (nuevo en 0.10.40)
+
+La primera fase de integración utiliza Tunnel Client oficial **v0.0.19**, sin copiar binarios al repositorio ni modificar la distribución v0.0.18. Se configura desde la paleta de comandos de VS Code:
+
+1. **Túnel — Instalar versión oficial 0.0.19**: selecciona automáticamente Windows, Linux o macOS y x64/ARM64; descarga por HTTPS y comprueba el SHA-256 publicado oficialmente antes de extraer.
+2. **Túnel — Configurar API key y perfil**: solicita el Tunnel ID existente y la API key de ejecución de manera local; llama a `init --sample sample_mcp_remote_no_auth`, sin sobrescribir perfiles existentes, y guarda la clave mediante `SecretStorage`.
+3. **Túnel — Iniciar**: comprueba que el servidor MCP local funciona, que no existe otro servicio en el puerto 8080 y que `doctor` acepta la configuración, antes de iniciar un proceso independiente sin terminal.
+4. **Túnel — Consultar estado**, **Detener (solo propio)** y **Activar o desactivar inicio automático** permiten la supervisión local. El inicio automático requiere consentimiento explícito, está desactivado inicialmente y solo lo intenta la ventana hub.
+
+**Restricciones:** el gestor no crea un túnel remoto en OpenAI Platform (se necesita un Tunnel ID ya existente), no lee las claves DPAPI del script anterior, no sustituye un perfil preexistente y no termina procesos del usuario. El puerto de salud es fijo en 8080 en esta fase; para instalaciones con varios túneles o puertos personalizados se requiere una evolución de la coordinación. La clave queda en `ExtensionContext.secrets` y el perfil en el almacenamiento global de la extensión. No se garantiza que el túnel continúe supervisado después de cerrar VS Code; tampoco permanecería disponible su servidor MCP dependiente de VS Code.
+
+Referencia oficial: https://github.com/openai/tunnel-client/releases/tag/v0.0.19
 
 ## Seguridad y túnel
 

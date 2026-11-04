@@ -6,8 +6,8 @@ const path=require('node:path');
 
 const root=path.resolve(__dirname,'..');
 const pkg=require(path.join(root,'package.json'));
-const es=['instalacion.md','uso.md','compatibilidad.md','validacion.md','skills.md','historial.md'];
-const en=['installation.md','usage.md','compatibility.md','validation.md','skills.md','changelog.md'];
+const es=['instalacion.md','uso.md','compatibilidad.md','validacion.md','skills.md','historial.md','plan-conexiones-multia.md'];
+const en=['installation.md','usage.md','compatibility.md','validation.md','skills.md','changelog.md','multi-ai-connections-plan.md'];
 const files=['README.md','CHANGELOG.md',
   ...es.map(file=>'docs/es/'+file),
   ...en.map(file=>'docs/en/'+file)];

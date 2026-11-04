@@ -8,11 +8,15 @@ function response(value:unknown,isError=false):CallToolResult {
     return {isError,content:[{type:'text',text:typeof value==='string'?value:JSON.stringify(value,null,2)}]};
 }
 export function registerNativeTools(server:ToolRegistry,shells:ShellApi):void {
-    const selected=z.string().describe('REQUIRED shell ID or short alias; never defaults to another window.');
-    async function action(shell_id:string,kind:NativeKind,args:NativeArgs):Promise<CallToolResult>{
+    const selected=z.string().optional().describe(
+        'Shell ID or short alias; only omitted when exactly one shell exists.');
+    async function action(shell_id:string|undefined,kind:NativeKind,args:NativeArgs):Promise<CallToolResult>{
         try{
             if(!shells.native){throw new Error('Native VSCode tools are unavailable in this window.');}
-            return response(await shells.native(shell_id,kind,args));
+            const available=await shells.list();
+            const chosen=shell_id||(available.length===1?available[0].shell_id:undefined);
+            if(!chosen){throw new Error('Explicit shell_id required when zero or multiple shells are present.');}
+            return response(await shells.native(chosen,kind,args));
         }catch(error){return response({error:error instanceof Error?error.message:String(error)},true);}
     }
     server.tool('get_diagnostics_code','Read VSCode diagnostics only from the explicitly selected shell/window.',

@@ -3,8 +3,8 @@ const assert=require('node:assert/strict');
 const http=require('node:http');
 const {environment,rpc,tool,wait}=require('./connection-fixture.cjs');
 async function until(check,ms=4000){const end=Date.now()+ms;while(Date.now()<end){if(await check())return;await wait(10);}throw Error('Recovery exceeded '+ms+'ms');}
-const execute=(env,id,command,signal)=>tool(env.port,'execute_shell_command_code',
- {shell_id:id,command,timeout:5000},{signal,headers:{connection:'close'}}).then(value=>({value}),error=>({error}));
+const execute=(env,id,command,signal,timeout=5000)=>tool(env.port,'execute_shell_command_code',
+ {shell_id:id,command,timeout},{signal,headers:{connection:'close'}}).then(value=>({value}),error=>({error}));
 let phase='setup';
 (async()=>{
  const env=await environment();
@@ -29,17 +29,40 @@ let phase='setup';
    const values=await Promise.all([0,1,2].map(index=>execute(env,'connection_'+index,'hub_reconnected_'+cycle+'_'+index)));
    assert.ok(values.every(value=>value.value));
   }
-  // Disconnected queued requests must never execute after reconnect.
-  const first=execute(env,'connection_0','delay:600:queue_barrier');
+  // Requests are serialized per shell. Hold the first execution using a
+  // deterministic fixture gate rather than a wall-clock sleep; an overloaded
+  // CI host can delay HTTP abort delivery until after a short sleep ends.
+  const first=execute(env,'connection_0','hold:queue_barrier',undefined,20000);
   phase='queued cancellation';
-  await until(()=>env.managers[0].list()[0].busy);
-  const controllers=Array.from({length:100},()=>new AbortController());
-  const queued=controllers.map((controller,index)=>execute(env,'connection_0','queue_'+index,controller.signal));
-  await until(()=>env.managers[0].list()[0].queued>=50);
-  controllers.forEach((controller,index)=>{if(index%5!==0)controller.abort();});
+  await until(()=>env.holds.has('queue_barrier'),5000);
+  // Respect the 32-request HTTP limit, while still testing queue cancellation.
+  const controllers=Array.from({length:28},()=>new AbortController());
+  const queued=controllers.map((controller,index)=>
+    execute(env,'connection_0','queue_'+index,controller.signal,20000));
+  try {
+    await until(()=>env.managers[0].list()[0].queued>=28,12000);
+    controllers.forEach((controller,index)=>{if(index%5!==0)controller.abort();});
+    // Prove the worker actually released all cancelled calls BEFORE allowing
+    // any other command to start. Client-side abort responses alone are not proof.
+    try{
+      await until(()=>env.managers[0].list()[0].queued<=6,12000);
+    }catch(error){
+      console.error('QUEUE_CANCEL_DIAGNOSTICS',JSON.stringify({
+        queued:env.managers[0].list()[0].queued,
+        shellBusy:env.managers[0].list()[0].busy,
+        hubSessions:env.hub.sessions.size,
+        workerRequests:env.workers[0].requests.size,
+        issues:env.issued.filter(item=>/^queue_/.test(item.command)).length,
+        sampleLogs:env.logs.slice(-4)
+      }));
+      throw error;
+    }
+  } finally {
+    env.releaseHold('queue_barrier');
+  }
   const settled=await Promise.all(queued);assert.ok((await first).value);
   settled.forEach((value,index)=>assert.equal(!!value.value,index%5===0));
-  assert.equal(env.issued.filter(item=>/^queue_/.test(item.command)).length,20);
+  assert.equal(env.issued.filter(item=>/^queue_/.test(item.command)).length,6);
   assert.equal(env.managers[0].list()[0].queued,0);
 
   // The hub can disappear while a user command continues in its worker.
@@ -60,6 +83,6 @@ let phase='setup';
   assert.throws(()=>env.router.resolve('stable_alias'),/Unknown shell_id/);
   await env.register(0);assert.equal(env.router.resolve('stable_alias'),'connection_0');
   assert.equal((await env.router.list()).length,3);
-  console.log('PASS: 30 worker reconnects, 20 hub restarts, 100 queued requests with 80 cancellations, preserved active command, no replay and stale-registration recovery');
+  console.log('PASS: 30 worker reconnects, 20 hub restarts, 28 queued requests with 22 cancellations, preserved active command, no replay and stale-registration recovery');
  }finally{await env.stop();}
 })().catch(error=>{console.error(phase,error);process.exitCode=1;});

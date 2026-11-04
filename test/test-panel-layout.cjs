@@ -25,10 +25,29 @@ for(const required of [
 ].filter(x=>x!=='prefers-reduced-motion'))assert.ok(js.includes(required),'Missing UI implementation: '+required);
 assert.ok(css.includes('prefers-reduced-motion'),'Reduced-motion support missing');
 for(const required of ['id="tabSkills"','id="skillsPage"','id="searchSkills"','id="skillsScope"',
-  'id="requestsDisclosure"','id="skillsStatus" role="status" aria-live="polite"','role="tablist"']){
+  'id="requestsCount"','id="requestsList"','id="requestsEmpty"','id="skillsStatus" role="status" aria-live="polite"','role="tablist"']){
   assert.ok(html.includes(required),'Missing accessible skill browser element: '+required);
 }
-assert.ok(!html.includes('id="tabRequests"'),'Requests must live in the local disclosure');
+assert.ok(html.includes('id="tabRequests"')&&html.includes('id="requestsPage"'),
+  'Requests need a dedicated navigation page');
+for(const key of ['navDisclosure','tabOverview','overviewPage','tabConnections',
+  'connectionsPage','tabSettings','settingsPage','aiFormPanel','aiList']){
+  assert.ok(html.includes('id="'+key+'"'),'Missing structured menu or AI connection view: '+key);
+}
+assert.ok(js.includes('function renderConnections()')&&js.includes('function aiAction('));
+for(const key of ['aiInstall','aiUninstall','aiOpenConfig','aiCheck','aiConfigured']){
+  assert.ok(js.includes(key),'Missing multilingual GUI integration control '+key);
+}
+assert.ok(!js.includes("aiAction('ai_install'")&&js.includes("aiAction('ai_uninstall'"),
+  'The AI client panel must reject unauthenticated automatic setup and permit legacy unlinks');
+assert.ok(css.includes('.nav-list button[aria-selected="true"]'),
+  'New navigation must highlight the selected page');
+assert.ok(!html.includes('id="requestsDisclosure"')&&!html.includes('class="requests-disclosure"'),
+  'Requests must be directly visible in their page without a nested disclosure');
+assert.equal((html.match(/id="requestsCount"/g)||[]).length,1,
+  'Dedicated requests page must own its count');
+assert.ok(js.includes("$('requestsEmpty').hidden=pending.length!==0"),
+  'The empty request state must respond to pending requests');
 assert.ok(js.includes('data.requestId!==skillRequest'),'Outdated searches must not replace the current results');
 assert.ok(js.includes('if(rows===skillRows){return;}'),'Periodic terminal updates must preserve skill button focus');
 assert.ok(css.includes('grid-template-columns:minmax(0,1fr) auto'),'Text and action buttons must occupy independent grid columns');

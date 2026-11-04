@@ -4,5 +4,13 @@
   "multiShell.toggle": "MultiShell MCP: Toggle Server",
   "multiShell.listSkills": "MultiShell MCP: List available skills",
   "multiShell.info": "MultiShell MCP: Show Server Information",
-  "multiShell.interactiveAutoExitDesc": "Automatically quit recognized standalone interactive terminal programs (for example less, more or top). A per-window switch and per-terminal override are available in the MultiShell panel."
+  "multiShell.interactiveAutoExitDesc": "Automatically quit recognized standalone interactive terminal programs (for example less, more or top). A per-window switch and per-terminal override are available in the MultiShell panel.",
+  "multiShell.tunnelInstall": "MultiShell MCP: Tunnel — Install Official v0.0.19",
+  "multiShell.tunnelConfigure": "MultiShell MCP: Tunnel — Configure API Key and Profile",
+  "multiShell.tunnelStart": "MultiShell MCP: Tunnel — Start",
+  "multiShell.tunnelStop": "MultiShell MCP: Tunnel — Stop (Managed Only)",
+  "multiShell.tunnelStatus": "MultiShell MCP: Tunnel — Show Status",
+  "multiShell.tunnelAutoStart": "MultiShell MCP: Tunnel — Toggle Automatic Start",
+  "multiShell.tunnelReuseProfile": "MultiShell MCP: Tunnel — Reuse an Existing Profile",
+  "multiShell.tunnelUpdateKey": "MultiShell MCP: Tunnel — Replace Runtime API Key"
 }

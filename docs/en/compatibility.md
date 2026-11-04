@@ -2,7 +2,7 @@
 
 [Español](../es/compatibilidad.md) · [Index](../../README.md)
 
-MultiShell MCP 0.10.39 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
+MultiShell MCP 0.10.52 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
 
 Use `list_skill_names_code(shell_id="fallouttraduccion",scope="all")` to get names from the project and Codex. When ChatGPT has a cached tool schema, use `execute_shell_command_code(command="skills fallouttraduccion",cwd="@mcp")` as a read-only control query. To include global Codex skills, explicitly enable the off-by-default `multi-shell-mcp.globalCodexSkills` permission. [Full guide](skills.md).
 
@@ -61,6 +61,19 @@ read_file_code(path="@shell:my_project/src/main.ts")
 Copy and move tools require **both paths to resolve to the same terminal**. Requests with missing selectors, cross-terminal paths, or paths outside the allowed scope are rejected.
 
 The legacy layer supports **control queries and operations on existing terminals**. To access a newly introduced tool such as `create_user_shell_code`, the connector must refresh its current schema. If the tool is missing, refresh or reconnect the ChatGPT MCP connector after installing the VSIX. There is no reason to change the tunnel's credentials or profile to fix a cached schema.
+
+## Integrated Tunnel Manager (new in 0.10.40)
+
+The first integration phase uses official Tunnel Client **v0.0.19** without adding binaries to Git or changing the existing v0.0.18 distribution. Use the VS Code Command Palette:
+
+1. **Tunnel — Install Official v0.0.19** selects Windows, Linux or macOS and x64/ARM64, downloads over HTTPS and checks the pinned official SHA-256 before extracting.
+2. **Tunnel — Configure API Key and Profile** prompts locally for an existing Tunnel ID and runtime API key. It uses `init --sample sample_mcp_remote_no_auth`, refuses to overwrite an existing profile and stores the API key using `SecretStorage`.
+3. **Tunnel — Start** verifies the local MCP listener, checks for an existing service on port 8080, runs `doctor` and starts a child process without opening an integrated terminal.
+4. **Tunnel — Show Status**, **Stop (Managed Only)** and **Toggle Automatic Start** expose local management. Autostart requires explicit approval, starts off, and only runs from the elected hub window.
+
+**Limitations:** the manager does not create a remote OpenAI Platform tunnel (an existing Tunnel ID is required), import the legacy Windows DPAPI file, overwrite existing profiles, or kill external tunnel processes. The health port is fixed at 8080 in this initial phase; multiple custom ports and multi-profile service ownership need further development. The key is stored in `ExtensionContext.secrets`, and the profile in global extension storage. Tunnel supervision after closing VS Code is not guaranteed, and its VS Code-hosted MCP server would also be offline.
+
+Official release: https://github.com/openai/tunnel-client/releases/tag/v0.0.19
 
 ## Security and tunnel
 

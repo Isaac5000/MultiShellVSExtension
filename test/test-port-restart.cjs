@@ -8,6 +8,7 @@ let configChanged;
 let statusItem;
 const alerts=[];
 const events=[];
+const tunnelEvents=[];
 const vscode={
   ThemeColor:class{constructor(id){this.id=id;}},
   ConfigurationTarget:{Global:1},
@@ -54,12 +55,26 @@ const extension=proxyquire('../out/extension.js',{
   './multi-window':{MultiWindowController:FakeController,WindowRouter:class{},getSecret:()=> 'token'},
   './server':{MCPServer:class{}},
   './panel':{MultiShellPanel:class{static viewType='multi-shell-mcp.sessions';refresh(){}dispose(){}}},
-  './utils/logger':{logger:{info(){},warn(){},error(){},dispose(){}}}
+  './utils/logger':{logger:{info(){},warn(){},error(){},dispose(){}}},
+  // This test exercises MCP port configuration, not a real tunnel client.
+  // Keep its async work deterministic and verify the synchronization calls.
+  './tunnel-manager':{TunnelManager:class{
+    async assertPortChangeSafe(oldPort,newPort){
+      tunnelEvents.push('safe:'+oldPort+':'+newPort);
+    }
+    async syncPort(oldPort,newPort){
+      tunnelEvents.push('sync:'+oldPort+':'+newPort);
+      return 'updated';
+    }
+    async adoptDetached(){return false;}
+    async startIfEnabled(){}
+    dispose(){}
+  }}
 });
 const context={
   globalStorageUri:{fsPath:'C:\\testproject\\.storage'},
   workspaceState:{get:()=>undefined,update:async()=>{}},
-  globalState:{get:()=>true,update:async()=>{}},
+  globalState:{get:(key,defaultValue)=>key==='multiShellMcpEnabled'?true:defaultValue,update:async()=>{}},
   subscriptions:[]
 };
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -73,6 +88,8 @@ async function main(){
     assert.ok(events.includes('stopped:3000'));
     assert.ok(events.includes('preserved:3000'),'Port restart must keep existing terminals alive');
     assert.ok(events.includes('started:4300'));
+    assert.ok(tunnelEvents.includes('safe:3000:4300'));
+    assert.ok(tunnelEvents.includes('sync:3000:4300'));
     assert.equal(statusItem.text,'MultiShell MCP: ON · 4300');
     assert.equal(statusItem.color.id,'testing.iconPassed');
 
@@ -103,4 +120,11 @@ async function main(){
     console.log('PASS: port rollback, live tool-permission reload, queued rapid config changes, preserved terminals');
   }finally{await extension.deactivate();assert.ok(events.includes('preserved:4600'),'Extension unload must preserve VSCode terminals');}
 }
-main().catch(e=>{console.error(e);process.exitCode=1;});
+const watchdog=setTimeout(()=>{
+  console.error('FAILED: test-port-restart exceeded its 10-second deadline.');
+  console.error('Recent events:',JSON.stringify(events.slice(-30)));
+  console.error('Alerts:',JSON.stringify(alerts.slice(-5)));
+  process.exit(2);
+},10000);
+main().catch(e=>{console.error(e);process.exitCode=1;})
+  .finally(()=>clearTimeout(watchdog));

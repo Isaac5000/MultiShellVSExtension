@@ -2,7 +2,7 @@
 
 [English](../en/skills.md) · [Índice](../../README.md)
 
-**MultiShell MCP Server 0.10.39** admite skills de proyecto basadas en la especificación Agent Skills, con `SKILL.md` y metadatos YAML (`name` y `description`).
+**MultiShell MCP Server 0.10.52** admite skills de proyecto basadas en la especificación Agent Skills, con `SKILL.md` y metadatos YAML (`name` y `description`).
 
 ## Dónde guardar las skills
 
@@ -65,7 +65,7 @@ Los clientes MCP anteriores conservan sus herramientas `list_skills_code`, `read
 
 La distribución portátil está en `plugins/multishell-mcp/`, con `plugin.json`, `mcp.json` y las skills `setup` y `multishell-mcp`. El marketplace de desarrollo es `.agents/plugins/marketplace.json` (`multishell-local`).
 
-Genera ambos instaladores con `npm run package:all`. Se crean `multi-shell-mcp-server-0.10.39.vsix` y `multi-shell-mcp-plugin-0.10.39.zip`. Para instalar el plugin de forma local en un cliente compatible, selecciona el marketplace del repositorio y autoriza la instalación; la compilación no instala nada automáticamente.
+Genera ambos instaladores con `npm run package:all`. Se crean `multi-shell-mcp-server-0.10.52.vsix` y `multi-shell-mcp-plugin-0.10.52.zip`. Para instalar el plugin de forma local en un cliente compatible, selecciona el marketplace del repositorio y autoriza la instalación; la compilación no instala nada automáticamente.
 
 **Importante:** el `mcp.json` incluido apunta a `http://127.0.0.1:3000/mcp`, accesible solo desde la misma máquina y con el puerto predeterminado. ChatGPT Work en la nube debe utilizar un conector MCP registrado con túnel seguro y configuración propia. No publiques el servidor local sin autenticación directamente en Internet. El plugin aporta las skills; no concede permisos nuevos.
 

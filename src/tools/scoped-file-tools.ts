@@ -44,12 +44,37 @@ export function scopedPath(root: string, file: string): string {
     }
     return target;
 }
-/** Read only the requested UTF-8 lines, without loading the whole file. */
-async function readRange(file: string, startLine: number, endLine: number, limit: number): Promise<string> {
+/** Bind scoped reads to an opened descriptor and recheck containment and
+ * identity before exposing data. Refuse FIFOs and devices. Native openat2
+ * would be required for a complete ancestor-rename guarantee on Linux. */
+async function openScopedFile(root:string,file:string):Promise<{
+    handle:fs.promises.FileHandle;identity:fs.Stats
+}>{
+    const absolute=scopedPath(root,file);
+    const inspected=await fs.promises.stat(absolute);
+    if(!inspected.isFile()){throw new Error('Only regular files may be read.');}
+    const flags=fs.constants.O_RDONLY|
+        (process.platform==='win32'?0:fs.constants.O_NONBLOCK);
+    const handle=await fs.promises.open(absolute,flags);
+    try{
+        const identity=await handle.stat();
+        if(!identity.isFile()){throw new Error('Only regular files may be read.');}
+        await validateOpenedFile(root,file,identity);
+        return {handle,identity};
+    }catch(error){await handle.close();throw error;}
+}
+async function validateOpenedFile(root:string,file:string,identity:fs.Stats):Promise<void>{
+    const absolute=scopedPath(root,file);
+    const current=await fs.promises.stat(absolute);
+    if(!current.isFile()||current.dev!==identity.dev||current.ino!==identity.ino){
+        throw new Error('File path changed during scoped operation; request denied.');
+    }
+}
+/** Read only requested UTF-8 lines from a verified descriptor. */
+async function readRange(input: fs.ReadStream, startLine: number, endLine: number, limit: number): Promise<string> {
     const first=startLine>0?startLine:1;
     const last=endLine>0?endLine:Number.POSITIVE_INFINITY;
     if(last<first){throw new Error('Invalid line range.');}
-    const input=fs.createReadStream(file,{encoding:'utf8',highWaterMark:64*1024});
     let line=1,part='',result='',included=0;
     const append=(value:string)=>{
         if(line>=first && line<=last){
@@ -118,11 +143,17 @@ async function withFileLocks<T>(paths:readonly string[],operation:()=>Promise<T>
     }
 }
 /** Publish a complete replacement or leave the original untouched on write failure. */
-async function atomicWriteFile(target:string,contents:string,overwrite=true):Promise<void>{
+async function atomicWriteFile(target:string,contents:string,overwrite=true,root?:string):Promise<void>{
     const temporary=path.join(path.dirname(target),
         '.'+path.basename(target)+'.multishell-'+randomUUID()+'.tmp');
     try{
+        if(root){scopedPath(root,path.relative(root,temporary));}
         await fs.promises.writeFile(temporary,contents,{flag:'wx',encoding:'utf-8'});
+        // Detect a parent swap after staging but BEFORE the final replacement.
+        if(root){
+            scopedPath(root,path.relative(root,temporary));
+            scopedPath(root,path.relative(root,target));
+        }
         if(overwrite){await fs.promises.rename(temporary,target);}
         else{await fs.promises.link(temporary,target);}
     }finally{
@@ -148,21 +179,46 @@ async function safeMove(source:string,target:string,overwrite:boolean):Promise<v
     await fs.promises.rename(source,target);
 }
 async function read(s: ShellApi, id: string, file: string): Promise<{ data: string; absolute: string }> {
-    const absolute = scopedPath(s.root(id), file);
-    const data = await fs.promises.readFile(absolute, 'utf-8');
-    return { data, absolute };
+    const root=s.root(id);
+    const absolute=scopedPath(root,file);
+    const {handle,identity}=await openScopedFile(root,file);
+    try{
+        const data=await handle.readFile({encoding:'utf-8'});
+        await validateOpenedFile(root,file,identity);
+        return {data,absolute};
+    }finally{await handle.close();}
 }
 async function list(s: ShellApi, id: string, file: string, recursive: boolean) {
     const root = s.root(id);
     const base = scopedPath(root, file);
     const files: Array<{ path: string; type: string }> = [];
     const visit = async (dir: string) => {
+        // Do not trust a directory listing if a parent is swapped while an
+        // asynchronous readdir is in progress. Check every returned name
+        // against the current scoped directory, before returning any names.
+        const relativeDir=path.relative(root,dir)||'.';
+        scopedPath(root,relativeDir);
+        const before=await fs.promises.stat(dir);
+        if(!before.isDirectory()){throw new Error('Only directories can be listed.');}
         for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
             if (files.length >= MAX_FILES) { throw new Error('Too many files. List a smaller directory.'); }
             const full = scopedPath(root, path.relative(root, path.join(dir, entry.name)));
+            let actual:fs.Stats;
+            try{actual=await fs.promises.lstat(full);}
+            catch{throw new Error('Directory contents changed during listing.');}
+            if(actual.isDirectory()!==entry.isDirectory()||
+                actual.isFile()!==entry.isFile()||
+                actual.isSymbolicLink()!==entry.isSymbolicLink()){
+                throw new Error('Directory contents changed during listing.');
+            }
             const kind = entry.isDirectory() ? 'directory' : 'file';
             files.push({ path: path.relative(root, full).split(path.sep).join('/'), type: kind });
             if (recursive && entry.isDirectory() && !ignored.has(entry.name)) { await visit(full); }
+        }
+        scopedPath(root,relativeDir);
+        const current=await fs.promises.stat(dir);
+        if(!current.isDirectory()||before.dev!==current.dev||before.ino!==current.ino){
+            throw new Error('Directory changed during listing.');
         }
     };
     await visit(base);
@@ -184,17 +240,27 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
           startLine: z.number().int().optional().default(-1), endLine: z.number().int().optional().default(-1) },
         async ({ shell_id, path: file, encoding, maxCharacters, startLine, endLine }): Promise<CallToolResult> => {
             try {
-                const absolute = scopedPath(s.root(shell_id), file);
-                if (encoding === 'base64') {
-                    const size=(await fs.promises.stat(absolute)).size;
-                    if(Math.ceil(size/3)*4>maxCharacters){
-                        throw new Error('Result exceeds maxCharacters.');
-                    }
-                    const data=await fs.promises.readFile(absolute);
-                    return reply(data.toString('base64'));
+                if(encoding!=='base64'&&encoding!=='utf-8'&&encoding!=='utf8'){
+                    throw new Error('Only utf-8 or base64 encoding supported.');
                 }
-                if (encoding !== 'utf-8' && encoding !== 'utf8') { throw new Error('Only utf-8 or base64 encoding supported.'); }
-                return reply(await readRange(absolute,startLine,endLine,maxCharacters));
+                const root=s.root(shell_id);
+                const {handle,identity}=await openScopedFile(root,file);
+                try{
+                    if(encoding==='base64'){
+                        if(Math.ceil(identity.size/3)*4>maxCharacters){
+                            throw new Error('Result exceeds maxCharacters.');
+                        }
+                        const data=await handle.readFile();
+                        await validateOpenedFile(root,file,identity);
+                        return reply(data.toString('base64'));
+                    }
+                    const input=handle.createReadStream({
+                        encoding:'utf8',highWaterMark:64*1024,autoClose:false
+                    });
+                    const data=await readRange(input,startLine,endLine,maxCharacters);
+                    await validateOpenedFile(root,file,identity);
+                    return reply(data);
+                }finally{await handle.close();}
             } catch (e) { return reply({ error: String(e) }, true); }
         });
     }
@@ -208,7 +274,7 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
                     await fs.promises.mkdir(path.dirname(absolute),{recursive:true});
                     scopedPath(s.root(shell_id),file);
                     if(ignoreIfExists && fs.existsSync(absolute)){return reply({skipped:file});}
-                    await atomicWriteFile(absolute,content,overwrite);
+                    await atomicWriteFile(absolute,content,overwrite,s.root(shell_id));
                     return reply({shell_id,created:file});
                 });
             } catch(e) { return reply({ error: String(e) }, true); }
@@ -228,10 +294,10 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
                     const replacement=content.replace(/\r\n/g,'\n').split('\n');
                     lines.splice(startLine-1,endLine-startLine+1,...replacement);
                     const updated=lines.join(eol);
-                    if((await fs.promises.readFile(absolute,'utf-8'))!==data){
+                    if((await read(s,shell_id,file)).data!==data){
                         throw new Error('Concurrent file change detected; retry.');
                     }
-                    await atomicWriteFile(absolute,updated);
+                    await atomicWriteFile(absolute,updated,true,s.root(shell_id));
                     return reply({shell_id,updated:file,startLine,endLine});
                 });
             } catch(e) { return reply({ error: String(e) }, true); }
@@ -249,6 +315,8 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
                         '.'+path.basename(target)+'.multishell-'+randomUUID()+'.tmp');
                     try{
                         await fs.promises.copyFile(source,temporary,fs.constants.COPYFILE_EXCL);
+                        scopedPath(root,sourcePath);scopedPath(root,targetPath);
+                        scopedPath(root,path.relative(root,temporary));
                         if(overwrite){await fs.promises.rename(temporary,target);}
                         else{await fs.promises.link(temporary,target);}
                     }finally{

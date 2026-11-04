@@ -72,7 +72,7 @@ const {ShellManager,recognizedInteractiveCommand,interactiveReadyForQuit}=
     const recognized=[
         'less file.txt','more README.md','top','htop','man ls',
         'btop','bpytop','nvtop','iftop','iotop','tig',
-        'top -d 2','htop -d 5'
+        'top -d 2','htop -d 5','less "space in name.txt"'
     ];
     const rejected=[
         'less --help','less --version','less -F file','less --quit-if-one-screen file',
@@ -83,7 +83,9 @@ const {ShellManager,recognizedInteractiveCommand,interactiveReadyForQuit}=
         'nvtop -h','less file | cat','man ls; echo done',
         'echo more','git diff --check','git log','git --no-pager log',
         'vim config','nano file','ssh host','docker stats --no-stream',
-        'bat --paging=never file','top $(date)'
+        'bat --paging=never file','top $(date)',
+        'less "unterminated',"more 'unterminated",'top "unfinished',
+        'less file\\ name.txt','less file\\','less \\"quoted\\"'
     ];
     for(const cmd of recognized)assert.ok(recognizedInteractiveCommand(cmd),
         'Expected allowlisted standalone screen command: '+cmd);
@@ -93,6 +95,7 @@ const {ShellManager,recognizedInteractiveCommand,interactiveReadyForQuit}=
     const screens=[
         ['more README.md',['first page\n-- Más',' --'],true],
         ['less file.txt',['first page\n(END)'],true],
+        ['less "space in name.txt"',['first page\n(END)'],true],
         ['man ls',['manual content\n(END)'],true],
         ['top',['top - 21:35:01 up 5 days\nTasks: 87 total'],true],
         ['htop',['\x1b[?1049hCPU Mem Tasks'],true],
@@ -108,7 +111,10 @@ const {ShellManager,recognizedInteractiveCommand,interactiveReadyForQuit}=
         ['less --help',['(END)'],false],
         ['top -b -n 1',['top - 21:35:01\nTasks: 87 total'],false],
         ['man -w ls',['(END)'],false],
-        ['less suspicious.txt',['(END)'],false]
+        ['less suspicious.txt',['(END)'],false],
+        ['less "unterminated',['pager-looking text\n(END)'],false],
+        ['less file\\ name.txt',['pager-looking text\n(END)'],false],
+        ['top "unfinished',['top - 21:35:01\nTasks: 50 total'],false]
     ];
     manager.create('simulation',dir,true,'user');
     let testCount=0;

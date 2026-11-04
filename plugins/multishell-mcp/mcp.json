@@ -7,7 +7,9 @@
       "extensions": {
         "com.openai": {
           "auth": {
-            "type": "none"
+            "type": "api_key",
+            "headerScheme": "custom_header",
+            "headerName": "X-MultiShell-Local-Auth"
           }
         }
       }

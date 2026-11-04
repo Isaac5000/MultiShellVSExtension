@@ -73,6 +73,11 @@ async function main(){
   assert.ok(calls.includes('multi-shell-mcp.toggleServer'));
   assert.ok(calls.includes('multi-shell-mcp.showServerInfo'));
   assert.ok(calls.includes('multi-shell-mcp.listSkills'));
+  for(const name of ['tunnelInstall','tunnelConfigure','tunnelReuseProfile',
+    'tunnelUpdateKey','tunnelStart','tunnelStop','tunnelStatus','tunnelAutoStart']){
+    assert.ok(commandHandlers.has('multi-shell-mcp.'+name),
+      'Missing explicit local tunnel command: '+name);
+  }
   desiredSkill='z-last';
   await commandHandlers.get('multi-shell-mcp.listSkills')();
   assert.ok(lastPickerItems.some(item=>item.name==='z-last'),

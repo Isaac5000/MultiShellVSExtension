@@ -1,8 +1,112 @@
 # Testing, validation, and troubleshooting
 
+**0.10.51 result:** all 116 automated suites passed in five batches (24 + 23 + 23 + 23 + 23); TypeScript compilation, VSIX/plugin packaging, ESLint and `git diff --check` succeeded. Production npm dependency audit reported 0 advisories. Manual post-install checks remain for VS Code startup, the unwanted Windows Terminal window, and ChatGPT connectivity over a real tunnel.
+
+
+## Validation 0.10.52 — Authenticated AI gateways and scoped directory listings
+
+**Regression result:** all 118 automated suites passed in five batches (24 + 24 + 23 + 24 + 23), including the new directory-swap regression and detection of legacy unauthenticated MCP client configurations. The provider catalog no longer advertises automatic installation for clients requiring an individually authenticated gateway.
+
+`test-authenticated-local-config.cjs` and `test-ai-panel.cjs` verify that legacy URL-only configs are not treated as authenticated or silently installed. `test-ai-connection-render.cjs` checks that the obsolete automatic setup button is gone and managed legacy entries can still be disconnected. `test-list-file-race.cjs` deterministically reproduces external directory names during an ancestor swap and requires denial. Copied Bearer examples contain only a placeholder, not the stored credential.
+
+**Remaining manual checks:** sign in from actual Gemini/Claude/Cursor/Copilot clients after secure credential setup; confirm no new Windows Terminal window after the upgrade; verify the ChatGPT tunnel still works. Portable Node.js protections mitigate but cannot formally eliminate all filesystem rename races.
+
+## Validation 0.10.51 — MCP hardening and startup console
+
+Regressions: `test-runtime-hardening.cjs` enforces main-listener auth, HTTP 401 before JSON parsing and 32-request HTTP 429 throttling; `test-security-audit-probes.cjs` checks that deterministic symlink swaps cannot return or replace external canaries; `test-native-shell-compat.cjs` checks safe single-shell fallback and ambiguous-shell rejection; `test-tunnel-lifecycle.cjs` checks environment-backed local auth headers and Windows child launch options.
+
+**Manual check after installation:** stop and start the managed tunnel once in the panel, then restart VS Code. Confirm no extra Windows Terminal window appears and ChatGPT can still invoke tools using the same `tunnel_id`. No user-created terminals were terminated as part of the tests.
+
+**Technical boundary:** portable Node.js lacks descriptor-relative open primitives needed to prove total freedom from all adversarial ancestor-rename races. Tests cover the reproduced race schedules, not every possible OS-level interleaving.
+
+## Validation 0.10.51 — ChatGPT custom MCP plugin setup and removed unused keys
+
+`test-chatgpt-plugin-guide.cjs` verifies that the ChatGPT guide covers official **Add custom MCP server** / **Tunnel** setup and reuses the same `tunnel_id` across Platform, MultiShell and ChatGPT. It checks four authorized official links (Tunnels, runtime keys, ChatGPT and custom MCP help) and ensures the ChatGPT plugin instructions **never request the tunnel runtime API key**. Onboarding tests ensure Gemini CLI and Claude Code no longer show unnecessary API key fields and that legacy keys require explicit user deletion.
+
+**Regression:** 113/113 suites across four batches (29 + 29 + 29 + 26); TypeScript and ESLint passed. These tests validate the instructional and local UI behavior, **not actual custom plugin registration in a ChatGPT account**, workspace tunnel associations, or third-party OAuth consent.
+
+## Validation 0.10.49 — Guided provider setup and credential security
+
+Regression fix: the legacy panel test mocked `workspaceState` without `globalState`. The provider-credential status reader now supports this testing fallback, and `test-panel.cjs` waits for the initial valid state and always disposes refresh timers after an assertion failure. The hanging `node test/test-panel.cjs` was reproduced and fixed, with a verified zero exit status. All **112 regression suites** passed across four batches (29 + 29 + 29 + 25).
+
+`test-ai-provider-onboarding.cjs` verifies 10 bilingual provider guides, official HTTPS resources, suitable per-provider fields, secure per-profile SecretStorage and safe public URL validation. It asserts secrets never appear in metadata or Webview snapshots, rejects HTTP/localhost/embedded credentials, blocks foreign fields and checks selective clearing. `test-ai-panel.cjs` checks save/clear actions, trust rules, unsafe URL rejection and catalog-verified documentation opening. `test-ai-connection-render.cjs` checks **?** disclosures, command previews, empty password inputs for stored secrets and no credential leaks in rendered cards.
+
+**Limit:** local application integration still requires real tests inside the user's AI client. These guides do not establish live Claude web/Grok OAuth or a public tunnel.
+
+## Validation 0.10.48 — Independent AI authentication and isolation
+
+New tests: `test-ai-access.cjs` checks constant-time Bearer comparison, exact shell ID authorization, cross-shell read/execute denial, global permission ceilings and changed-root refusal. `test-ai-gateways.cjs` creates five actual independent loopback MCP servers, sends simultaneous requests with five distinct credentials and checks cross-profile 401 responses, prohibited tool calls, cross-shell scope denial, hidden coordinator admin endpoints, untrusted origins (403), independent key rotation/revocation, opt-in autostart and immediate refusal on hub loss (503). `test-ai-panel.cjs` checks confirmation prompts and no key leakage to Webview snapshots.
+
+Additional tests: `test-ai-gateway-limits.cjs` holds 32 authenticated MCP requests and verifies that the 33rd receives HTTP 429 with `Retry-After: 1`, while bad bearer tokens still receive HTTP 401. `test-package-privacy.cjs` checks the packaged VSIX excludes local `.mcp.json`, backup and temporary connector files.
+
+**Evidence limits:** simulated MCP HTTP clients, not live Claude/Grok web connectors or an HTTPS tunnel. Provider account sign-in and safe public transport remain outstanding. The existing local port 3000 server continues to serve the OpenAI Tunnel Client without per-client identity isolation; these security policies apply to new authenticated gateway endpoints.
+
+## Validation 0.10.47 — Visible AI cards and safe shell escaping
+
+New tests:
+- `test-ai-connection-render.cjs`: every script-referenced DOM ID exists in the webview and local/remote persisted profiles render separate cards.
+- `test-interactive-escape-guards.cjs`: unclosed quotes, ambiguous backslash escapes and control characters never qualify for automatic pager termination, while safely quoted commands remain eligible. The PowerShell `>>` prompt produces a hint only.
+- `test-interactive-safety.cjs` adds simulated pager-looking output for malformed commands and verifies no `q` is injected.
+
+**Regression outcome:** 107 of 107 suites passed across four batches; TypeScript compilation, ESLint and bilingual documentation checks passed. These tests do not establish live external-AI sessions or perfect handling of every malformed shell command.
+
+## Validation 0.10.46 — Provider-specific surfaces and explicit cloud connection boundary
+
+`test-ai-provider-catalog.cjs` validates the local/remote surface registry, HTTPS official setup locations, bilingual transport requirements, local profile persistence without secrets and rejection of invalid localhost snippets for cloud profiles. `test-ai-panel.cjs` checks the UI cannot auto-install local MCP settings for a Claude web profile, does not claim remote connectivity and opens only catalog-authorized official setup URLs.
+
+**Limitations:** tests are not evidence of live cloud-provider connections. No public authenticated HTTPS gateway, provider-issued OAuth credentials or per-profile tool authorization is deployed by this version. Local MCP port exposure remains unchanged. External account authentication and connector registration still follow the vendor's official process.
+
+## Validation 0.10.45 — Fully graphical local client configuration
+
+`test-ai-client-config.cjs` validates Copilot, Gemini CLI, Cursor and Claude Code using isolated temporary directories: safe JSONC merging and comment preservation, backups, idempotent setup, removing only owned entries, safe removal after port changes, existing-server conflicts, symlinks and exclusive write locks. `test-ai-panel.cjs` verifies configure/disconnect confirmations, Workspace Trust enforcement and prevention of profile deletion while its configuration is managed. `test-panel-layout.cjs` checks the visible configuration actions.
+
+**Windows automated validation:** all 104 suites passed in four batches, TypeScript and ESLint passed. Client configuration tests only use temporary files; **no actual Copilot, Gemini, Claude or Cursor user settings were modified**.
+
+**Limits:** no live AI application sign-in or post-configuration MCP discovery has been verified. “Configured” means an on-disk MCP entry was checked, not proof of a live AI client session. MultiShell still lacks per-client MCP identity authorization and isolated shell/tool permissions.
+
+## Validation 0.10.44 — Requests UI, five-client concurrency and load
+
+Updated `test-panel-layout.cjs` and `test-panel.cjs`: the Requests view has one heading and count with directly visible approvals/empty state, without a nested `<details>`.
+
+New suites:
+- `test-five-ai-clients.cjs`: five independent MCP HTTP clients, one coordinator, five workers, 147 calls. Cross-shell execution overlap, shared-shell FIFO, no pending queues, response routing and deliberate negative proof of missing per-client identity authorization.
+- `test-five-ai-one-window.cjs`: five clients, one coordinator, five simulated shells in one worker, 207 calls. Distinct workspace roots, prevented accidental sharing and progress while one shell is blocked.
+- `MULTISHELL_SOAK_SECONDS=30 node --expose-gc test/connection-soak.cjs`: 6,756 simulated commands in 30.1 seconds, 48 ms p95 request latency, 46.56 ms p99 event-loop lag, no unexpected errors, heap growth within test thresholds.
+
+**Final code validation:** HTTP request cancellation now flows to tool dispatch using request-scoped `AsyncLocalStorage` and combines with the SDK's signal when present. The 100-request/80-cancellation regression passed **three consecutive executions**, and the full `npm test` log contains **PASS: 103 test suites** after this change. ESLint and npm audit also passed (zero known vulnerabilities). The MCP terminal channel reattached during the integrated run, so the final result was read from its saved log rather than the tool's exit response.
+
+The earlier intermittent overload failure remains a reason not to claim universal 100% cancellation reliability. An experimental mock without proper shutdown was excluded from the suites. Real five-provider acceptance and physical Linux/macOS testing remain pending.
+
+**Limits:** synthetic workers/terminals, not five actual AI products or real compilations. Per-shell FIFO is not per-AI identity authorization; one MCP caller can request another caller's shell, and editing operations have no universal client-specific file lock. Use distinct worktrees/directories for concurrent writers; do not expose the unauthenticated local MCP port publicly.
+
+## Validation 0.10.43 — Structured menu and local AI clients
+
+New tests `test-panel-navigation.cjs`, `test-ai-connections.cjs` and `test-ai-panel.cjs` cover active navigation, credential-free local profiles, MCP client setup snippets, explicit security acknowledgement, untrusted workspace rejection and preservation of external processes. The redesign does not change existing terminal execution or permissions.
+
+No additional AI is considered verified before an end-to-end call from its real client. All local client profiles currently share server-wide tool permissions.
+
+## Validation 0.10.42 — Lock, process recovery and port hardening
+
+**98 of 98 automated suites passed on Windows** in four batches after stabilizing port-restart and FIFO network-order tests. TypeScript, ESLint and `npm audit --audit-level=low` passed with zero known vulnerabilities. New regression coverage includes concurrent stale-lock reclaim, lock replacement during asynchronous checks, orphaned recovery guards, native Windows process identity, simulated reattachment and stop, and atomic YAML-preserving port synchronization. Ambiguous identities fail closed.
+
+The live external tunnel is not modified during testing; remote end-to-end testing and physical Linux/macOS acceptance are still pending.
+
+## Validation 0.10.41 — Integrated Tunnel tab
+
+Panel regression tests now cover installation, profile creation/reuse, start, native disconnect confirmation, autostart, local host validation and absence of API keys in outgoing webview snapshots. These are manager-mocked tests, not a live production connection. **95 of 95 automated suites passed** on Windows, divided into four groups to avoid MCP terminal timeouts. TypeScript and ESLint also passed. Manual VSIX acceptance and a real remote-tunnel connection remain pending.
+
+## Validation 0.10.40 — Tunnel Client v0.0.19 Manager
+
+- **94 of 94 automated suites passed** on Windows, including extension command registration, ZIP extraction and SHA-256 integrity, interprocess locks, imported profile checks, and simulated Tunnel Client start/restart/stop.
+- TypeScript, ESLint, bilingual documentation and `npm audit --audit-level=low` passed, with **0 known vulnerabilities** reported.
+- The setup flow stores runtime API keys in `ExtensionContext.secrets`, initializes isolated profiles, and does not overwrite or terminate an already running external tunnel.
+- Installation logic supports Windows, Linux and macOS on x64 and ARM64. **Physical installation and acceptance testing on Linux/macOS are still pending.**
+- **Pending:** true end-to-end testing through a live tunnel managed by the new commands using user-provided credentials. This was deliberately skipped to preserve the current external session.
+
+
 [Español](../es/validacion.md) · [Index](../../README.md)
 
-Reference version: **MultiShell MCP Server 0.10.37**. Validation includes compilation, ESLint, npm audit, regressions, HTTP load, and real VS Code windows with isolated profiles. Current results and their limits are recorded below; local tests do not establish external tunnel continuity.
+Reference version: **MultiShell MCP Server 0.10.51**. Validation includes compilation, ESLint, npm audit, regressions, HTTP load, and real VS Code windows with isolated profiles. Current results and their limits are recorded below; local tests do not establish external tunnel continuity.
 
 Agent Skills regressions cover `SKILL.md` parsing, YAML metadata, multi-window scoping, path safety, `skill://index.json` resources, and read permissions. See [Agent Skills](skills.md).
 

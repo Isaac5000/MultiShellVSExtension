@@ -2,13 +2,118 @@
 
 [Español](../es/uso.md) · [Index](../../README.md)
 
-Applies to **MultiShell MCP Server 0.10.39**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
+Applies to **MultiShell MCP Server 0.10.52**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
 
 Open **Ctrl+Shift+P → MultiShell MCP: List available skills** to search and copy names, including global Codex skills when authorized. ChatGPT can also call `list_skill_names_code(shell_id="fallouttraduccion")` or use the legacy read-only `cwd="@mcp"`, `command="skills fallouttraduccion"` control query.
 
 For project skills, see [Agent Skills](skills.md) and call `list_skills_code` with the selected shell.
 
-Open the sidebar's **Skills** tab to search names and descriptions in this window's project. **Copy for ChatGPT** prepares an instruction containing the selected path and primary terminal; paste it into your MCP-connected chat. Terminal creation approvals appear in the **Requests** disclosure, directly below **Current window** and before the tabs. Personal skills require the existing global read permission.
+Open the sidebar's **Skills** tab to search names and descriptions in this window's project. **Copy for ChatGPT** prepares an instruction containing the selected path and primary terminal; paste it into your MCP-connected chat. Terminal creation approvals appear directly in the separate **Requests** page, without a nested disclosure. Personal skills require the existing global read permission.
+
+## Connect ChatGPT: create the custom MCP plugin after starting the tunnel (0.10.52)
+
+The **ChatGPT → ? How to connect ChatGPT using MCP** entry under **AI Connections** covers the entire process. Installing and starting `tunnel-client` in VS Code alone does not register a ChatGPT plugin.
+
+1. Under [OpenAI Platform — Tunnels](https://platform.openai.com/settings/organization/tunnels), create or select a tunnel and copy its **`tunnel_id`**. Associate it with the target ChatGPT workspace. Tunnel creation requires **Tunnels Read + Manage**.
+2. Under [Platform — API keys](https://platform.openai.com/settings/organization/api-keys), create a **restricted runtime API key** with **Tunnels Read + Use**. Do not run the daemon with an admin key.
+3. Under **MultiShell → OpenAI Tunnel**, install Tunnel Client, provide the **same `tunnel_id`** and runtime key, create the profile and select **Connect**. Keep the local MCP server running.
+4. Under **ChatGPT → Plugins → + → Add custom MCP server**, configure a custom MCP plugin with a **name** (e.g. MultiShell MCP), optional **description**, **Connection: Tunnel**, and select your tunnel or enter the **same `tunnel_id`**. Select the MCP server's supported authentication; current local MultiShell does not implement OAuth. **Never enter the tunnel runtime key into the ChatGPT plugin form.**
+5. Acknowledge the risk warning, select **I understand and want to continue**, click **Create as a plugin**, inspect the discovered tools and test the plugin from a chat. If the tunnel is missing, verify **Tunnels Read + Use** access and the target workspace association.
+
+The custom MCP plugin created within ChatGPT is **not** the local `multi-shell-mcp-plugin-*.zip` package and is not created automatically by the tunnel client. See the [official ChatGPT custom MCP connection guide](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
+
+**Removed unnecessary fields:** Gemini CLI and Claude Code no longer prompt for optional API keys during ordinary account login. Previously saved legacy keys can be explicitly removed using **Delete old key**; the update does not delete them automatically. Separate API profiles retain relevant credential fields.
+
+## Provider-specific setup in the graphical panel (0.10.49)
+
+Every **AI Connections** profile includes a **? How to connect** disclosure. It displays provider-specific prerequisites, verified copy-only commands (**never automatically executed**), official installation/account links and editable configuration fields for the relevant client surface.
+
+**Gemini CLI example:** 1) install Node.js 20+; 2) review and run `npm install -g @google/gemini-cli` if needed; 3) run `gemini` and sign in with Google; 4) select **Configure automatically** to preserve other MCP servers while registering MultiShell in the local user configuration; 5) verify using `/mcp list` inside Gemini or `gemini mcp list` in a terminal. Normal Google sign-in **does not require an API key**. As of 0.10.52, Gemini CLI no longer displays an API key input; the separate **Gemini API** profile retains its corresponding field.
+
+**Claude Code** shows official cross-platform setup options, account sign-in and `claude mcp list`. **Cursor and Copilot** show their local configuration guidance. **Claude web, Grok, Gemini Interactions API and Mistral** show public HTTPS requirements and official connector pages. OAuth browser consent remains with each external vendor.
+
+Where applicable, fields cover a **public HTTPS MCP URL**, **connector ID**, **provider API key**, and **MCP Bearer token**. Keys are entered as password inputs, stored separately for each profile in **VS Code SecretStorage**, never returned to Webview state, and can be cleared or replaced individually. Non-secret HTTPS URLs and connector IDs are saved as metadata after validation (no embedded passwords, query secrets or localhost). Deleting a profile removes its onboarding settings.
+
+A provider API key is separate from the MCP Bearer credential and the OpenAI Tunnel ID. ChatGPT's own **?** guide explains both the existing **OpenAI Tunnel** setup and the separate creation of a custom MCP plugin inside ChatGPT. **Saving a field does not expose a port, create an HTTPS tunnel, authenticate a vendor account or make a cloud connector live.** Secure transport and external vendor registration remain outstanding.
+
+## Independent authenticated AI gateways in the panel (0.10.48)
+
+This release introduces the **server-side authorization foundation required before external tunnels**. Each AI connection can have its own authenticated MCP listener, separate from the main coordinator on port 3000, but still using the same shared MultiShell routing core.
+
+Fully graphical local workflow:
+
+1. Start MultiShell in the **hub** VS Code window, open **AI Connections**, and create/select a profile.
+2. Under **Independent MCP access**, select an existing exact shell ID and permission level: **Read only**, **Read and edit**, **Read and run commands**, or **Full**. Select **Set up isolated access** and approve the scope.
+3. Select **Start gateway**. The card shows a local URL, such as `http://127.0.0.1:38100/mcp`, with a distinct listener port per profile.
+4. **Copy private key** retrieves the independent credential from VS Code SecretStorage after an explicit warning. The key is never serialized to Webview state or written into project files. Compatible MCP clients must send `Authorization: Bearer <key>` to the corresponding endpoint. This is NOT an AI account API key nor a cloud-tunnel credential.
+5. **Rotate key** revokes the previous secret and stops only its gateway. **Revoke** removes the saved credential and policy; **Autostart** is opt-in and applies only while this window is the active hub.
+
+The permission gate checks exact shell identity and the original workspace root, forbids cross-shell access, terminal creation/closure and alias changes. Global MultiShell tool settings remain an upper bound on permissions.
+
+**NOT a public connector yet:** localhost URLs cannot be accessed by Claude web, Grok or other cloud-hosted AIs. Version 0.10.48 neither publishes an HTTPS tunnel nor automatically registers vendor OAuth. Public access requires a separately tested authenticated transport and the provider's own setup flow. Never expose the raw 3000 listener or open 38100–38199 to the Internet.
+
+## Terminal safety and visible AI profiles (0.10.47)
+
+Saved **AI Connections** must render one card per persisted profile, in sync with the count. This fix does not delete or migrate existing profiles.
+
+**Automatic interactive exit** can still be configured by window or terminal. It only sends `q` to recognized standalone pagers whose current screen confirms an interactive prompt. Unbalanced quotes, ambiguous shell escapes or a `>>` continuation prompt **never justify automatic input or process termination**. Persistent terminals remain reserved when a command times out until completion or verified idle status.
+
+For maintenance commands, do not use `exit` to report test status in integrated PowerShell and avoid heavily nested `node -e` quoting; use reviewed temporary scripts and print the exit status without terminating the terminal.
+
+## Provider-specific AI connection surfaces (0.10.46)
+
+**AI Connections → New** separates **Local / Desktop** (Copilot, Claude Code, Gemini CLI, Cursor and other MCP clients) from **Cloud / API** (Claude web/Cowork, Grok web, Gemini Interactions API, Mistral Work/Studio and Cursor remote). Selecting a provider shows its distinct transport and requirements.
+
+- **ChatGPT:** retain existing Secure MCP Tunnel controls.
+- **Copilot / Claude Code / Gemini CLI / Cursor local:** extension-owned configuration can be installed into their local settings from the panel. “Configured” only verifies the file and does not mean the client has accepted tools or established a live session.
+- **Claude web/Cowork:** custom connectors are configured in Claude; they connect from Anthropic infrastructure and require public authenticated HTTPS (OAuth or supported request headers).
+- **Grok web:** Grok custom MCP connector requires a reachable HTTPS URL and compatible credentials; localhost is not reachable from the cloud.
+- **Gemini Interactions API:** supports `mcp_server` tools using Streamable HTTP and `snake_case` names, including authorization headers; not the same product as Gemini web.
+- **Mistral Work/Studio:** register custom MCP connectors using official mechanisms, with product and role requirements.
+- **Cursor remote:** HTTPS Streamable HTTP and compatible authentication.
+
+Remote profile cards explicitly show **Pending authenticated HTTPS gateway** and **Official setup**; they do not copy a localhost URL as a remote connector. **This version does not start an inbound gateway or register connectors in vendor accounts.** Authenticated per-connection identities, request authorization and a compatible tunnel must be implemented before a remote connector can safely become active.
+
+The main MCP listener now authenticates the ChatGPT tunnel locally; other local clients should use individual authenticated gateways scoped to their permitted shell and tools.
+
+## Secure per-AI local gateway setup (0.10.52)
+
+1. Open **MultiShell → AI Connections** and create or select a client profile.
+2. Provision a **separate authenticated gateway** bound to the exact shell ID and desired permission level. Start it and optionally opt in to autostart for future sessions.
+3. Select **Copy configuration**. The snippet contains the scoped loopback gateway URL (ports 38100–38199) and `Authorization: Bearer YOUR_PER_CLIENT_GATEWAY_KEY`, which is **only a placeholder**.
+4. Obtain the **individual gateway secret** through the local UI and enter it using the client's secure credential configuration, replacing the placeholder. Never paste it into chats, Git repositories or shared files. The copied example contains no secret.
+5. Verify tool discovery in Gemini CLI, Claude Code, Cursor or Copilot. A saved configuration file alone does not establish that a client authenticated successfully.
+6. Legacy entries pointing directly at port 3000 are reported as **obsolete/unauthenticated**. MultiShell-owned entries can still be inspected and removed with **Disconnect**; no old user configuration is silently deleted.
+
+**Compatibility change since 0.10.45:** the former **Configure automatically** feature is not offered. It wrote an unauthenticated URL which stopped working when the main listener gained authentication in 0.10.52. We do not copy MultiShell's internal coordinator token to other applications' JSON configuration files. Fully automatic integration will need secure, provider-specific credential provisioning. The portable plugin does not contain credentials.
+
+## Requests view and five concurrent MCP clients (0.10.44)
+
+Requests now has a single page with heading, count, explanation, direct approvals and an empty state; there is no redundant disclosure.
+
+**One coordinator listening on local port 3000 is sufficient for five MCP clients** in our synthetic tests. Five distinct shells may share one VS Code window or be spread across windows. Different shells can execute simultaneously, whereas calls targeting the same `shell_id` run FIFO.
+
+**Not per-AI isolation:** client profiles do not currently authenticate callers or restrict their tool/shell visibility. Assign a distinct shell and preferably a separate working directory/Git worktree to each AI to avoid file collisions. Remote tunnels may add their own limits; the single coordinator is a single point of failure. Synthetic test throughput does not predict five real-model workloads or validate a multi-AI remote gateway.
+
+## Structured navigation and multi-AI local profiles (0.10.43)
+
+The sidebar offers **Overview**, **Terminals**, **Windows**, **Requests**, **Skills**, **AI Connections**, **Tunnel** and **Settings**. Open **Menu** to select a page, then the navigation folds to free vertical space. MCP port and interactive command auto-exit now live under **Settings**.
+
+In **AI Connections**, ChatGPT opens the existing private OpenAI Tunnel Client manager. The **New** action stores local-only setup profiles for VS Code/GitHub Copilot, Claude Code, Gemini CLI, Cursor and other MCP clients. Only provider, label and creation timestamp are persisted. **Copy configuration** creates a local snippet for the current MCP port, following an explicit safety confirmation. You must install it manually in the other client and verify its connection.
+
+**Security boundary:** these profiles do not establish an external session, authenticate client identities, store API keys, create tunnels, or independently enforce tool permissions. All local clients currently share the MCP server's global tool permissions; the loopback HTTP listener must not be published to the Internet. Clients may request editing or shell execution if those tools are globally enabled.
+
+Examples: VS Code's `.vscode/mcp.json` uses `servers`, Gemini CLI uses `mcpServers` and `httpUrl`, Cursor uses `mcpServers` with `url`, and Claude Code uses `claude mcp add --transport http`. Merge each snippet with the client's existing configuration; MultiShell does not modify that client automatically.
+
+## Integrated tunnel sidebar (0.10.41)
+
+**0.10.42 improvement:** a tunnel launched by this extension can be reattached after a VS Code reload if its persisted process identity can be verified. Ambiguous or legacy processes stay external/detached and are never terminated. Stop an active managed tunnel before changing MCP ports; extension-created profiles update safely, imported profiles never change.
+
+Open the **Tunnel** tab. Select **Install client** to download and verify Tunnel Client v0.0.19. Enter an existing **Tunnel ID**, a new profile name and the runtime **API key** in the masked field, then select **Create profile**. You may also reuse a compatible local profile without overwriting its YAML; the existing-profile picker requests a key in a native secure prompt.
+
+Select **Connect** and optionally enable **Start tunnel automatically**, confirming the modal. **Disconnect** requires confirmation, stops only the extension-owned process, and disables autostart. External tunnels are not terminated. **Update key** replaces the saved secret without editing the profile.
+
+The status differentiates managed, external and reload-preserved processes and paused automatic retries. The API key is sent once to the local VS Code extension host, stored in SecretStorage and never returned in webview snapshots or saved to project files. This tab does not create remote tunnels: a valid platform Tunnel ID and runtime key must already exist.
 
 ## 1. Start the server and select a terminal
 

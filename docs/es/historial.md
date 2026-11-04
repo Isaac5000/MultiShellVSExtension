@@ -2,6 +2,119 @@
 
 [English version](../en/changelog.md) · [Índice del proyecto](../../README.md)
 
+## 0.10.52 — Conexiones locales autenticadas y protección de listados
+
+- Detectado y corregido que la configuración automática heredada guardaba una URL sin autorización pese a que el puerto principal ya exige autenticación. Ahora se rechaza esa instalación y los perfiles anteriores se marcan como no verificados, conservando la posibilidad de desvincularlos sin borrar otras entradas.
+- **Copiar configuración** utiliza la URL de la pasarela individual vinculada al perfil de IA y un marcador de Bearer, sin exportar la clave interna del coordinador ni las claves de SecretStorage. Se necesita introducir la clave en el cliente por una vía segura; no se afirma que el proceso sea automático.
+- El panel deja de ofrecer el botón de instalación automática incompatible. La documentación y la skill del plugin describen el flujo de pasarela local y su limitación.
+- Añadido un caso adversarial de sustitución de directorios: `list_files_code` podía revelar nombres de archivos externos al reordenarse un directorio durante `readdir`. Ahora revalida cada entrada y el directorio antes de devolver el listado.
+- Se mantienen las restricciones de seguridad y pruebas de 0.10.51. Esta revisión sigue sin demostrar ausencia absoluta de carreras del sistema de archivos; tampoco constituye prueba manual de que Windows Terminal no se abra tras instalar el VSIX.
+
+## 0.10.51 — Protección MCP y arranque de túnel sin consola independiente
+
+- El servidor MCP principal exige el token local de la instalación en las peticiones HTTP de producción. El Tunnel Client inyecta la cabecera privada desde variables de entorno solo en su conexión local; no se almacena en YAML ni se entrega a ChatGPT.
+- Las peticiones no autenticadas se rechazan antes de analizar su JSON. El límite de 32 solicitudes activas (HTTP 429) se aplica también al puerto principal.
+- Las lecturas usan un descriptor abierto, comprueban identidad y contención antes de devolver datos, y rechazan archivos especiales. Las escrituras atómicas vuelven a verificar rutas antes de publicar; las copias también se comprueban después del copiado. Pruebas de sustitución de enlaces simbólicos incluidas.
+- Los comandos nativos aceptan omitir `shell_id` exclusivamente cuando solo hay una terminal; con varias, no eligen ninguna de forma implícita.
+- En Windows el Tunnel Client deja de lanzarse como proceso `detached` con consola independiente, evitando el patrón observado de aparición de Windows Terminal al iniciar Codex App Server.
+- Tras instalar esta versión, **reinicia el túnel administrado una vez desde el panel**, ya que un proceso antiguo no puede recibir las nuevas cabeceras en su entorno después de arrancar.
+- La seguridad de rutas ante cambios adversariales continuos requiere primitivas nativas de apertura relativa a descriptores para una garantía absoluta; las comprobaciones añadidas detectan las carreras reproducidas, sin afirmar que todas las carreras posibles estén eliminadas.
+
+## 0.10.50 — Complemento MCP de ChatGPT y limpieza de guías
+
+- La ayuda de ChatGPT en **Conexiones IA** describe el paso necesario de crear un complemento **Add custom MCP server → Create as a plugin** dentro de ChatGPT, adicional al Secure MCP Tunnel de MultiShell.
+- Datos identificados: `tunnel_id` desde Platform Tunnels, asociación con el espacio de trabajo, clave de ejecución separada con Tunnels Read + Use, nombre del complemento, descripción opcional, conexión **Tunnel**, autenticación soportada, consentimiento de riesgos y comprobación de herramientas.
+- Enlaces específicos a la gestión de túneles, las claves de ejecución, ChatGPT y la guía oficial de complementos MCP. La API key del túnel solo se introduce en **Túnel OpenAI**, nunca como credencial del complemento.
+- Eliminados los campos opcionales de API key que no utilizan los flujos normales de Gemini CLI y Claude Code. Los secretos ya guardados se conservan hasta que el usuario pulse **Borrar clave antigua**; no hay eliminación silenciosa.
+- Mensajes y títulos del panel actualizados para diferenciar clientes locales y conectores en la nube; documentación y skill del plugin corregidas en ambos idiomas.
+
+## 0.10.49 — Guías por IA y campos seguros en el panel
+
+- Reparada una incompatibilidad con la prueba heredada del panel que dejaba activo el temporizador de Node después de fallar el estado inicial. Lectura compatible con `workspaceState`, espera verificable del primer snapshot y limpieza garantizada al fallar una aserción.
+
+- Cada perfil en **Conexiones IA** tiene un desplegable **?** con instrucciones específicas, comandos oficiales para copiar sin ejecución, enlaces a guías de los proveedores y advertencias de compatibilidad/autenticación.
+- Gemini CLI: requisitos Node.js 20+, instalación npm, inicio de sesión Google, configuración automática MCP existente y verificación con `gemini mcp list`. Se distingue expresamente de Gemini web y Gemini API.
+- Datos por proveedor: URL HTTPS pública, ID de conector, clave API opcional o token Bearer opcional según la modalidad. API keys y tokens se guardan en VS Code SecretStorage, nunca en Memento/HTML/snapshots/configuración MCP; se pueden borrar individualmente.
+- ChatGPT conserva su pestaña Túnel OpenAI y añade ayuda contextual y enlaces oficiales. Ninguna orden de instalación se ejecuta desde la guía.
+- Validación de URLs HTTPS sin usuario, contraseña, parámetros sensibles ni direcciones privadas. Guardar datos no abre puertos, ejecuta túneles ni registra proveedores remotos.
+- Pruebas para el catálogo de 10 guías, almacenamiento seguro y aislamiento por perfil, campos enmascarados, enlaces/acciones del panel y protección frente a borrado accidental.
+
+## 0.10.48 — Pasarelas MCP autenticadas e independientes
+
+- Primera implementación de pasarelas MCP independientes por IA: servidor MCP con autenticación Bearer obligatoria en cada solicitud, clave aleatoria individual de 256 bits en SecretStorage, puertos localhost estables 38100–38199 y rechazo de administradores MCP internos desde la pasarela.
+- Políticas en el servidor por perfil y por ID exacto de terminal, raíz original y permiso de lectura, edición, ejecución o completo. No se permite crear/cerrar terminales, cambiar alias ni acceder a otras ventanas mediante una pasarela de IA.
+- En el panel: configurar acceso aislado, iniciar/detener, copiar URL local, copiar clave con aviso, rotar, revocar y activar arranque automático. El panel nunca recibe la clave en su estado serializado.
+- Ante pérdida del rol de coordinador o del Workspace Trust, se rechazan solicitudes a la pasarela; la revocación no afecta las otras IAs.
+- Límite de 32 peticiones MCP simultáneas por pasarela autenticada, con HTTP 429 y reintento indicado; no afecta al coordinador principal o túnel OpenAI.
+- Exclusión de `.mcp.json`, respaldos y temporales de conexión del VSIX y Git.
+- Pruebas de cinco pasarelas reales con clientes MCP HTTP independientes, claves diferentes, llamadas simultáneas y denegación de accesos cruzados.
+- **Pendiente**: transporte HTTPS público gestionado, compatibilidad con encabezados/OAuth particulares de cada IA y comprobaciones reales desde Claude web, Grok y demás plataformas.
+
+## 0.10.47 — Renderizado de conexiones IA y escapes de terminación
+
+- Solucionado el fallo por el que el contador reconocía perfiles de IA guardados pero las tarjetas no aparecían: el campo de ayuda carecía de `id="aiFormHelp"` y el renderizado se interrumpía por una referencia nula.
+- Pruebas de concordancia de identificadores HTML/JS y simulación del renderizado de tarjetas locales y remotas.
+- Protección adicional de «Salir automáticamente»: comillas no cerradas y secuencias de escape ambiguas desactivan cualquier envío de `q`. No se intenta «reparar» el comando enviando Enter o Ctrl+C; los procesos permanecen bajo control del usuario.
+- Detección informativa del prompt secundario de PowerShell `>>` como posible continuación por comando incompleto.
+- Reglas del proyecto para evitar `node -e` con comillas complejas y `exit` en terminales PowerShell integradas.
+
+## 0.10.46 — Conexiones IA por proveedor y superficie
+
+- «Conexiones IA» distingue clientes locales de modalidades cloud/API. Cada proveedor presenta su mecanismo MCP, los requisitos concretos y el enlace oficial.
+- Nuevos perfiles: Claude web/Cowork, Grok web, Gemini Interactions API, Mistral Work/Studio y Cursor MCP remoto. Se conserva la configuración local existente de Copilot, Claude Code, Gemini CLI y Cursor, así como Secure MCP Tunnel para ChatGPT.
+- Los perfiles remotos permanecen en **pendiente de gateway autenticado** y no aceptan configuraciones `127.0.0.1`, ni ejecutan túneles ni almacenan credenciales arbitrarias. La conexión efectiva, OAuth y permisos separados siguen siendo un hito posterior.
+- Pruebas del catálogo, del panel, persistencia y rechazo de uso inseguro de la configuración local para IAs remotas.
+- No se publica el servidor MCP 3000 ni se altera la instalación activa.
+
+## 0.10.45 — Configuración automática de clientes MCP desde el panel
+
+- En **Conexiones IA**, botones **Configurar automáticamente**, **Revisar estado**, **Ver archivo** y **Desvincular** para Copilot, Gemini CLI, Cursor y Claude Code. Sin copiar JSON ni ejecutar comandos.
+- Configuración de usuario portable para Copilot (`mcp-config.json`), Gemini (`settings.json`) y Cursor (`mcp.json`). Claude Code utiliza `.mcp.json` de la carpeta abierta en VS Code, limitado a ese proyecto.
+- Edición estructurada JSON/JSONC, copias de seguridad antes de cambiar un archivo existente, bloqueo exclusivo, comprobación de cambios concurrentes, protección frente a symlinks y rechazo de colisiones. Solo se pueden retirar las entradas que MultiShell registró como propias.
+- Workspace Trust y confirmación nativa antes de configurar o desvincular. No se habilitan permisos por IA ni se fuerza un inicio de sesión externo.
+- Las configuraciones existentes se preservan; la conectividad del cliente real no se da por verificada automáticamente.
+
+## 0.10.44 — Solicitudes sin duplicación y pruebas de cinco clientes
+
+- El apartado «Solicitudes» muestra su propio título, contador, controles de aprobación y estado vacío, sin un segundo desplegable redundante.
+- Pruebas automatizadas con cinco clientes MCP HTTP independientes usando un solo coordinador y cinco shells en cinco trabajadores, y un solo trabajador con cinco shells. Se comprueba el paralelismo entre shells, FIFO en el shell compartido y ausencia de colas pendientes.
+- Prueba local sintética de 30 segundos: 6.756 comandos, p95 de 48 ms, sin errores inesperados. No equivale a cargas de las IAs reales.
+- Se confirma una limitación de seguridad: los perfiles multIA son etiquetas y configuraciones; no impiden que un cliente MCP use los shells de otro. Los permisos por cliente y el gateway autenticado siguen pendientes.
+- Corregida la propagación de cancelación HTTP por solicitud hacia el SDK y las herramientas; el caso de 100 solicitudes/80 cancelaciones pasó tres repeticiones consecutivas y la batería integrada terminó con 103 suites correctas. Conservar seguimiento de saturación y evitar garantías absolutas.
+
+## 0.10.43 — Navegación estructurada y perfiles MCP locales multIA
+
+- Rediseño del panel mediante menú vertical plegable, Resumen y separación de Solicitudes, Conexiones IA y Configuración; se conservan terminales, skills, seguridad y túnel OpenAI.
+- Perfiles locales para VS Code/Copilot, Claude Code, Gemini CLI, Cursor y clientes genéricos. Validación estricta de etiquetas, persistencia sin secretos, exportación por portapapeles y confirmación antes de compartir el acceso a herramientas MCP.
+- Los perfiles locales no implican conexiones verificadas ni autorizaciones separadas. No se publica ninguna URL remota ni se añade pasarela pública.
+- Pruebas nuevas de navegación, permisos de interfaz, almacenamiento, generación local segura y regresiones. Pruebas reales de clientes adicionales y controles por identidad pendientes.
+
+## 0.10.42 — Recuperación de túnel y protección de procesos
+
+- La limpieza de bloqueos antiguos utiliza un guardián exclusivo para impedir que dos ventanas retiren el bloqueo de otra. Si un guardián queda abandonado, el sistema falla de forma segura.
+- Recuperación del proceso propio tras una recarga mediante PID, inicio del proceso, ruta del ejecutable y huella de la línea de órdenes. Se rechaza la finalización si falla cualquier comprobación. Los procesos externos y anteriores a la nueva prueba de identidad no se adoptan.
+- Sincronización atómica del puerto MCP en perfiles creados por la extensión, preservando comentarios y campos YAML. Bloquea el cambio si el túnel gestionado está activo; nunca modifica perfiles importados.
+- Nuevas regresiones de concurrencia, recuperación, identidad nativa del proceso y cambios de puerto. Estabilizadas las pruebas de reinicio y FIFO de solicitudes. Las 98 suites, TypeScript, ESLint y auditoría npm han pasado en Windows. Linux/macOS físicos y conectividad remota completa siguen pendientes.
+
+## 0.10.41 — Gestión de túnel desde la interfaz lateral
+
+- Nueva pestaña **Túnel** del panel bilingüe con estado, instalación, perfil, Tunnel ID, API key oculta, conexión, parada y arranque automático.
+- Acciones protegidas por Workspace Trust, confirmaciones de desconexión y arranque automático; los procesos externos no se alteran.
+- El estado enviado a la webview no incluye credenciales. Nuevas pruebas de acciones de la interfaz y ausencia de filtraciones, además de regresiones de UI.
+- Windows: compilación, lint, pruebas y creación de instalador; validación de túnel remoto real y ejecución física en Linux/macOS siguen pendientes.
+
+## 0.10.40 — Gestor de túnel integrado con Tunnel Client v0.0.19
+
+- Primer gestor de túneles integrado en TypeScript, activado únicamente por el usuario; comandos locales de instalación, configuración, arranque, estado y parada de procesos propios.
+- Cliente oficial v0.0.19 y seis paquetes con SHA-256 fijados; compatible con Windows, Linux y macOS, arquitecturas x64 y ARM64.
+- Perfil aislado en almacenamiento global de VS Code, API key en `SecretStorage` e invocación segura de `init` y `doctor` sin scripts PowerShell.
+- Inicio automático deshabilitado por defecto; solo la ventana hub puede iniciarlo, sin modificar procesos de túneles existentes.
+- Pruebas unitarias de identidad, sumas de comprobación, integridad de instalación y restricciones del gestor; pruebas físicas multiplataforma todavía pendientes.
+
+- Nuevos perfiles existentes reutilizables en modo lectura, con comprobaciones estrictas del destino local, la referencia de API key y el host oficial de OpenAI.
+- Bloqueo interproceso persistente para evitar duplicar túneles tras recargas o varias ventanas; reintentos con espera progresiva y pausa ante errores continuados.
+- Nuevas pruebas de ciclo de vida completo simulado, recuperación, bloqueo y perfiles multiplataforma.
+
 ## 0.10.39 — Migración completa al SDK MCP v2
 
 - Se ha eliminado el SDK v1 como dependencia directa, junto con el transporte HTTP y el registro de herramientas de la implementación antigua.
