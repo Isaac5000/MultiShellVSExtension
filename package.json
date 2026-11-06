@@ -3,7 +3,7 @@
   "icon": "media/logo.png",
   "displayName": "MultiShell MCP Server",
   "description": "Multi-window VSCode MCP server with bilingual terminal panel, scoped shells and legacy connector support",
-  "version": "0.10.69",
+  "version": "0.10.72",
   "publisher": "local-multishell",
   "license": "MIT",
   "engines": {
@@ -148,7 +148,8 @@
     "test:multishell": "npm run compile && node scripts/bundle.cjs && node scripts/run-tests.cjs",
     "test:batch": "node scripts/run-tests.cjs",
     "test:panel": "node test/test-panel.cjs && node test/test-panel-layout.cjs",
-    "bundle": "npm run compile && node scripts/bundle.cjs"
+    "bundle": "npm run compile && node scripts/bundle.cjs",
+    "storage:cleanup": "node scripts/storage-maintenance.cjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.4.0",

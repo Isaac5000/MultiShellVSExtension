@@ -459,7 +459,7 @@ Real VS Code checks are distinct from this API test with simulated terminals. Na
 
 **Pending acceptance:** an end-to-end live tunnel test and manual acceptance after installing the VSIX into VS Code. Automated tests alone do not verify those scenarios.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.
 
 Compatible with 0.10.59.
 
@@ -472,3 +472,9 @@ Documentation compatible with 0.10.62.
 Documentation compatible with 0.10.63.
 
 Compatible with 0.10.64.
+
+## Safe disk maintenance (0.10.72)
+
+The cleanup is conservative. npm run storage:cleanup previews old isolated test profiles and verified legacy tunnel backups; npm run storage:cleanup -- --apply deletes only known-safe inactive targets after process checks. Active processes, recent folders and unknown files are retained. The most recent failed test profile is temporarily retained. VS Code-managed installed extensions are never deleted.
+
+Each terminal accepts at most 16 waiting commands; excess calls are rejected before sending input. The existing 32 concurrent HTTP requests and 1 MB isolated-command output limits remain in effect.

@@ -1,6 +1,6 @@
 # Bundle the official tunnel with the extension
 
-**MultiShell MCP 0.10.69.** The extension uses a single **TypeScript/JavaScript** codebase running on VS Code's Node.js runtime across Windows, Linux and macOS. The official tunnel still uses native OpenAI Tunnel Client v0.0.19 and cloudflared binaries. Its authentication and transport are not reimplemented.
+**MultiShell MCP 0.10.72.** The extension uses a single **TypeScript/JavaScript** codebase running on VS Code's Node.js runtime across Windows, Linux and macOS. The official tunnel still uses native OpenAI Tunnel Client v0.0.19 and cloudflared binaries. Its authentication and transport are not reimplemented.
 
 ## One VSIX per platform
 
@@ -16,7 +16,7 @@ From the project root:
 npm run package
 ```
 
-The command bundles/minifies JavaScript, verifies the pinned upstream archive, and generates **only one platform-specific VSIX**, such as `multi-shell-mcp-server-0.10.69-win32-x64.vsix`. Use `npm run package:all` if you also need the separate optional MCP plugin ZIP.
+The command bundles/minifies JavaScript, verifies the pinned upstream archive, and generates **only one platform-specific VSIX**, such as `multi-shell-mcp-server-0.10.72-win32-x64.vsix`. Use `npm run package:all` if you also need the separate optional MCP plugin ZIP.
 
 For another OS/architecture:
 
@@ -42,10 +42,14 @@ Only Windows x64 staging and VSIX contents have been checked with the actual ups
 
 Sources: [official tunnel release](https://github.com/openai/tunnel-client/releases/tag/v0.0.19), [OpenAI tunnel client macOS installation](https://github.com/openai/tunnel-client/blob/master/README.md), [VS Code platform-specific packages](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
 
-## Native executable selection (0.10.69)
+## Native executable selection (0.10.72)
 
 On each **new launch**, including autostart, the extension prioritizes its own SHA-256 verified native executable. A globalStorage copy is selected only to safely adopt a live legacy process whose PID, start identity, executable and arguments match the verified ownership lock. Stale locks and inactive legacy files cannot override the embedded path. Only integrated VSIX installers are now produced.
 
 ## Verified adoption after an extension upgrade
 
 A surviving tunnel started by an older installed VSIX can be adopted when its former extension directory still exists and the official binary passes hash checks. The ownership lock must also match the running PID, kernel start time, executable and invocation. A stale lock, removed older VSIX or unrelated process is left untouched; new launches prefer the current integrated binary. Installation/reload may interrupt the MCP connection, so install updates deliberately.
+
+## Native integrity requirement (0.10.72)
+
+Every fresh start requires the official binaries **inside the installed native VSIX**, verified by SHA-256. Neither the Verify action nor autostart downloads to globalStorage. Missing or altered binaries require reinstalling the correct platform VSIX. Old copies can be used only to reattach a live process with matching ownership fingerprint, never to start a new one. Existing credentials, profiles and unrelated processes are untouched.

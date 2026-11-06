@@ -463,7 +463,7 @@ Edición compatible con 0.10.58.
 
 Compatible con 0.10.59.
 
-Documentación compatible con 0.10.69.
+Documentación compatible con 0.10.72.
 
 Compatible con 0.10.61.
 
@@ -472,3 +472,9 @@ Documentación compatible con 0.10.62.
 Documentación compatible con 0.10.63.
 
 Compatible con 0.10.64.
+
+## Mantenimiento seguro de disco (0.10.72)
+
+La limpieza es conservadora. npm run storage:cleanup solo informa de perfiles aislados antiguos y copias verificadas del túnel; npm run storage:cleanup -- --apply los elimina tras verificar procesos y rutas. Los procesos activos, las carpetas recientes y los archivos desconocidos se conservan. Se retiene temporalmente el último perfil de pruebas fallido. No elimina versiones instaladas que administra VS Code.
+
+Cada terminal acepta como máximo 16 comandos esperando turno; las llamadas adicionales se rechazan sin enviar comandos a la terminal. Los límites de 32 peticiones HTTP concurrentes y 1 MB de salida de comandos aislados siguen vigentes.

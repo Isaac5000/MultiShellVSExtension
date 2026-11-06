@@ -34,4 +34,4 @@ La lectura exige acceso MCP a archivos; guardar requiere además permisos de edi
 
 La recuperación posterior a una recarga empieza siempre por `list_shells_code`; **no reutilices un `shell_id` antiguo** del mensaje guardado. El identificador `handoffId` sí permanece estable. El almacén dispone de un bloqueo entre procesos para impedir que dos guardados simultáneos superen el máximo de registros.
 
-Documentación compatible con 0.10.69.
+Documentación compatible con 0.10.72.

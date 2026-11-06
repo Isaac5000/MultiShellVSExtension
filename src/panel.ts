@@ -15,6 +15,7 @@ import {validAiAccessLevel} from './ai-access';
 import { MultiWindowController, UserShellRequest } from './multi-window';
 import {mapConcurrent} from './bounded-map';
 import { listWorkspaceSkills, readWorkspaceSkill, SkillOptions } from './tools/agent-skills';
+import {getPreferredPaths,setPreferredPath} from './tools/skill-preferences';
 
 interface Snapshot {
     running: boolean;
@@ -167,8 +168,30 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                 }
                 const result=listWorkspaceSkills(local.workspace,{...local.options,
                     scope:raw.scope as 'all'|'project'|'global',query:raw.query,
-                    cursor:raw.cursor as string|undefined,limit:40});
+                    cursor:raw.cursor as string|undefined,limit:40,
+                    preferredPaths:getPreferredPaths(this.context.workspaceState,
+                        this.context.globalState,local.options.includeGlobal===true)});
                 await this.view?.webview.postMessage({type:'skills_result',requestId:raw.requestId,...result});
+                return;
+            }
+            if(raw.type==='skill_prefer'){
+                if(typeof raw.key!=='string'||raw.key.length>200||
+                    typeof raw.value!=='boolean'){throw new Error('Invalid skill preference.');}
+                // This read validates the actual local skill, its scope, trusted
+                // workspace, and global permission before any preference persists.
+                const {metadata}=readWorkspaceSkill(local.workspace,raw.key,local.options);
+                if(metadata.scope==='global'&&!local.options.includeGlobal){
+                    throw new Error('Global skills are not authorized in this window.');
+                }
+                const current=this.skillContext();
+                if(current.workspace!==local.workspace||!current.enabled||
+                    (metadata.scope==='global'&&!current.options.includeGlobal)){
+                    throw new Error('Workspace or skill permissions changed.');
+                }
+                const storage=metadata.scope==='global'?this.context.globalState:this.context.workspaceState;
+                if(!storage){throw new Error('Preference storage is unavailable.');}
+                await setPreferredPath(storage,metadata.skill_path,metadata.scope,raw.value);
+                await this.view?.webview.postMessage({type:'skill_preferred'});
                 return;
             }
             if(typeof raw.value!=='string'||raw.value.length>200){throw new Error('Invalid skill selection.');}
@@ -275,7 +298,7 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
             case 'tunnel_install':
                 await vscode.window.withProgress({
                     location:vscode.ProgressLocation.Notification,
-                    title:'MultiShell: installing verified Tunnel Client'
+                    title:'MultiShell: verifying bundled Tunnel Client'
                 },async()=>{await tunnel.install();});
                 notice='tunnelInstalled';break;
             case 'tunnel_configure':
@@ -563,7 +586,9 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         try {
             if(raw.type.startsWith('tunnel_')){await this.tunnelMessage(raw);return;}
             if(raw.type.startsWith('ai_')){await this.aiMessage(raw);return;}
-            if(raw.type==='skills'||raw.type==='skill_copy'){await this.skillMessage(raw);return;}
+            if(raw.type==='skills'||raw.type==='skill_copy'||raw.type==='skill_prefer'){
+                await this.skillMessage(raw);return;
+            }
             if(raw.type==='skill_settings'){
                 await vscode.commands.executeCommand('workbench.action.openSettings','multi-shell-mcp.globalCodexSkills');
                 return;

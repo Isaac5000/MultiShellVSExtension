@@ -10,6 +10,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'multishell-tunnel-life-'));
 const state=new Map(),secrets=new Map(),events=[],cli=[],children=[];
 const key='do-not-log-this-runtime-secret';
 const context={
+ extensionUri:{fsPath:path.join(root,'installed-extension')},
  globalStorageUri:{fsPath:root},
  globalState:{get(k,def){return state.has(k)?state.get(k):def;},
   async update(k,v){state.set(k,v);}},

@@ -76,7 +76,7 @@ Not yet decided: HTTPS gateway vendor, quotas/limits, exact plans supported by e
 
 **Scope boundary:** this document records research and design only. It does not authorize multi-provider implementation or destructive migration.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.
 
 Compatible with 0.10.59.
 

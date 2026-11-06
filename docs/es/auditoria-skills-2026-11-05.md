@@ -64,4 +64,4 @@ La nueva `skills-lock.json` permanece en el repositorio para trazabilidad, pero 
 
 **Criterio de publicación:** pasar todas las suites, comprobar contenido del VSIX, verificar la exclusión de archivos privados, confirmar que el túnel sigue operativo y realizar después una validación manual de la versión instalada.
 
-Documentación compatible con 0.10.69.
+Documentación compatible con 0.10.72.

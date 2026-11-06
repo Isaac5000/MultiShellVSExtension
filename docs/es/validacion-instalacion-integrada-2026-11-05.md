@@ -58,3 +58,8 @@ Por tanto, no se afirma que el proceso activo se haya iniciado desde el binario 
 **Actualización documental (0.10.68):** se conserva este informe histórico; la recuperación verificada entre versiones se documenta en [Túnel integrado](tunel-integrado.md).
 
 **Actualización posterior de distribución (0.10.69):** los informes de 0.10.66 siguen siendo históricos; las compilaciones nuevas generan únicamente el VSIX nativo integrado.
+
+**Actualización posterior (0.10.70):** este informe conserva sus mediciones históricas. El cliente integrado es ahora obligatorio para los arranques nuevos y no se permite la descarga durante la ejecución.
+
+**Actualización documental (0.10.71):** las preferencias de skills no modifican el túnel; este informe conserva las pruebas históricas de la instalación anterior.
+**Nota 0.10.72:** el informe histórico no incluye las pruebas posteriores de limpieza y retención.

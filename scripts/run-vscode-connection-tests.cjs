@@ -3,6 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),cr
 const {spawn,spawnSync}=require('node:child_process');
 const assert=require('node:assert/strict');
 const {resolveTestShell}=require('./test-shell-resolver.cjs');
+const {pruneConnectionProfiles,safeRemoveTestProfile}=require('./test-profile-retention.cjs');
 const root=path.resolve(__dirname,'..'),base=path.join(root,'.vscode-test','connection-windows');
 const report={started:new Date().toISOString(),version:require('../package.json').version,checks:[]};
 const profileRoot=path.join(base,'profiles-'+report.started.replace(/[^0-9]/g,''));
@@ -36,7 +37,12 @@ async function main(){
  const shell=resolveTestShell();
  if(!fs.existsSync(code))throw Error('VS Code is required');
  const listener=net.createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
- fs.mkdirSync(base,{recursive:true});token=crypto.randomBytes(32).toString('hex');
+ fs.mkdirSync(base,{recursive:true});
+ // Only remove old, inactive isolated test profiles. Keep the latest failed
+ // diagnostic run and never touch a user's normal VS Code profile.
+ const previousRuns=pruneConnectionProfiles(base);
+ if(previousRuns.errors.length){console.warn('Profile retention skipped: '+previousRuns.errors.join('; '));}
+ token=crypto.randomBytes(32).toString('hex');
  const observer=path.join(base,'observer');fs.mkdirSync(observer,{recursive:true});
  fs.writeFileSync(path.join(observer,'package.json'),JSON.stringify({name:'connection-test-observer',
   displayName:'MultiShell Connection Test Observer',description:'Isolated connection and reload test observer',
@@ -164,7 +170,27 @@ async function main(){
  finally{
   for(const label of ['A','B'])fs.writeFileSync(path.join(base,label+'-command.json'),JSON.stringify({id:++commandId,op:'exit'}));
   try{await until(()=>['A','B'].every(label=>['complete','launching'].includes(state(label).stage)),6000);}catch{}
-  forceCloseOwnedProfiles();report.completed=new Date().toISOString();report.stage='complete';save();
+  forceCloseOwnedProfiles();
+   if(report.passed!==true){
+    // Keep the latest failed profile available for diagnosis; older failures
+    // expire under the bounded retention policy.
+    fs.mkdirSync(profileRoot,{recursive:true});
+    fs.writeFileSync(path.join(profileRoot,'.test-failed'),'Test failed; see report.json\n');
+   }else{
+    // The child windows were explicitly started with this unique profile root.
+    // OS command-line inspection is required; if still active, leave on disk.
+    await wait(900);
+    try{report.profileCleaned=safeRemoveTestProfile(base,profileRoot);}
+    catch(error){report.profileCleaned=false;report.profileCleanupError=String(error);}
+    // The observer CLI also uses a fixed, disposable VS Code profile.
+    try{report.installerProfileCleaned=safeRemoveTestProfile(base,
+      path.join(base,'installer-profile'));}
+    catch(error){report.installerProfileCleaned=false;
+      report.installerCleanupError=String(error);}
+   }
+   const retained=pruneConnectionProfiles(base);
+   if(retained.errors.length){report.profileRetentionError=retained.errors.join('; ');}
+   report.completed=new Date().toISOString();report.stage='complete';save();
   console.log(JSON.stringify({passed:report.passed,checks:report.checks.map(c=>({name:c.name,passed:c.passed,ms:c.ms})),report:path.join(base,'report.json')}));
  }
 }

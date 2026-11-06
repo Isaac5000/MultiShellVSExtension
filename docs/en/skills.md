@@ -2,7 +2,7 @@
 
 [Español](../es/skills.md) · [Project index](../../README.md)
 
-**MultiShell MCP Server 0.10.69** supports workspace Agent Skills: `SKILL.md` directories with YAML `name` and `description` metadata.
+**MultiShell MCP Server 0.10.72** supports workspace Agent Skills: `SKILL.md` directories with YAML `name` and `description` metadata.
 
 ## Faster skill discovery (0.10.54)
 
@@ -72,7 +72,7 @@ Legacy MCP clients retain `list_skills_code`, `read_skill_code`, and `read_skill
 
 The portable plugin lives at `plugins/multishell-mcp/`, with `plugin.json`, `mcp.json`, and `setup` and `multishell-mcp` skills. Its repo-local marketplace is `.agents/plugins/marketplace.json` (`multishell-local`).
 
-Run `npm run package` to build one VSIX with the verified official tunnel for this OS. Run `npm run package:all` if you also want the optional plugin ZIP. On Windows x64 this produces `multi-shell-mcp-server-0.10.69-win32-x64.vsix` and (when requested) `multi-shell-mcp-plugin-0.10.69.zip`. Install the local plugin from the repo marketplace on a supported client and approve the installation. Building does not install it automatically.
+Run `npm run package` to build one VSIX with the verified official tunnel for this OS. Run `npm run package:all` if you also want the optional plugin ZIP. On Windows x64 this produces `multi-shell-mcp-server-0.10.72-win32-x64.vsix` and (when requested) `multi-shell-mcp-plugin-0.10.72.zip`. Install the local plugin from the repo marketplace on a supported client and approve the installation. Building does not install it automatically.
 
 **Important:** the bundled `mcp.json` points to `http://127.0.0.1:3000/mcp`, which is reachable only on the same computer at the default port. Cloud-hosted ChatGPT Work needs a separately registered, secure MCP tunnel connection. Do not expose the local unauthenticated server to the public internet. The plugin packages skills but grants no additional permissions.
 
@@ -143,3 +143,9 @@ Documentation compatible with 0.10.58.
 
 
 Current installers: multi-shell-mcp-server-0.10.67.vsix y multi-shell-mcp-plugin-0.10.67.zip
+
+## Preferred skills (0.10.72)
+
+In MultiShell MCP > Skills, select the star beside a skill to make it preferred. Exact paths are saved in VS Code workspace state (at most 24), without copying SKILL.md or opening a terminal. Favorites appear first, even when they previously belonged to later pages. Click the star again to remove the preference.
+
+Personal skills can be preferred globally only when multi-shell-mcp.globalCodexSkills was already explicitly enabled. The star never enables this permission. MCP discovery tools identify favorites and modern skills/list ranks them first without changing its standard schema; ChatGPT still controls whether instructions are read. Preferences are independent per workspace and store paths only.

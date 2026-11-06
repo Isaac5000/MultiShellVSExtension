@@ -3,9 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as net from 'net';
 import {ChildProcess,spawn} from 'child_process';
-import {installOfficialTunnel,tunnelAsset,verifiedExecutable,
-    validateProfileName,validateTunnelId,execChecked,TUNNEL_VERSION,
-    TUNNEL_RELEASE_URL} from './tunnel-release';
+import {tunnelAsset,verifiedExecutable,validateProfileName,validateTunnelId,
+    execChecked,TUNNEL_VERSION,TUNNEL_RELEASE_URL} from './tunnel-release';
 import {TunnelLaunchLock,processIsAlive} from './tunnel-lock';
 import {TunnelProcessIdentity,readTunnelProcessIdentity,sameTunnelProcess} from './tunnel-process';
 import {discoverExistingProfiles,inspectExistingProfile,ExistingTunnelProfile,
@@ -152,8 +151,9 @@ export class TunnelManager{
                 if(sameTunnelProcess(identity,record.childIdentity)){return executable;}
             }
         }
-        // A generic/slim VSIX still supports a previously verified install.
-        return embedded||verifiedExecutable(this.context.globalStorageUri.fsPath,asset);
+        // Fresh launches fail closed unless this platform VSIX includes its
+        // verified native tunnel. Never fall back to an idle old copy.
+        return embedded;
     }
     async status():Promise<TunnelStatus>{
         const [exe,ready,occupied,record]=await Promise.all([
@@ -179,19 +179,12 @@ export class TunnelManager{
     }
     async install():Promise<string>{
         return this.runExclusive(async()=>{
-            // Embedded package: already installed and SHA-256 verified. Do not
-            // copy 67 MiB into globalStorage or attempt another download.
             const existing=await this.installed();
-            if(existing){
-                this.notify('Tunnel Client v'+TUNNEL_VERSION+' verified and available for this OS.');
-                return existing;
+            if(!existing){
+                throw new Error('Integrated Tunnel Client verification failed. Reinstall the platform-specific VSIX.');
             }
-            // Backward-compatible generic VSIX: explicitly opt in to downloading
-            // the pinned archive, exactly as before.
-            const exe=await installOfficialTunnel(this.context.globalStorageUri.fsPath,
-                tunnelAsset(),text=>this.notify(text));
-            this.notify('Tunnel Client v'+TUNNEL_VERSION+' verified and installed for this OS.');
-            return exe;
+            this.notify('Bundled Tunnel Client v'+TUNNEL_VERSION+' verified for this OS.');
+            return existing;
         });
     }
     async configure(tunnelId:string,runtimeKey:string,profile=DEFAULT_PROFILE):Promise<void>{
@@ -200,7 +193,7 @@ export class TunnelManager{
             const id=validateTunnelId(tunnelId);
             const name=validateProfileName(profile);
             const exe=await this.installed();
-            if(!exe){throw new Error('Install official Tunnel Client v'+TUNNEL_VERSION+' first.');}
+            if(!exe){throw new Error('Bundled Tunnel Client verification failed; reinstall the platform-specific VSIX.');}
             if(this.child||this.adopted){throw new Error('Stop the managed tunnel before changing its profile.');}
             const port=this.currentMcpPort();
             if(!port){throw new Error('Start MultiShell MCP before configuring a tunnel.');}
@@ -351,7 +344,7 @@ export class TunnelManager{
                 throw new Error('Only the active MultiShell MCP hub window may start the shared tunnel.');
             }
             const exe=await this.installed();
-            if(!exe){throw new Error('Install the verified v'+TUNNEL_VERSION+' executable first.');}
+            if(!exe){throw new Error('Bundled Tunnel Client verification failed; reinstall the platform-specific VSIX.');}
             if(this.child&&this.child.exitCode===null){return 'already-running';}
             if(this.adopted){
                 const exe=await this.installed();

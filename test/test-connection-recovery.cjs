@@ -35,13 +35,18 @@ let phase='setup';
   const first=execute(env,'connection_0','hold:queue_barrier',undefined,20000);
   phase='queued cancellation';
   await until(()=>env.holds.has('queue_barrier'),5000);
-  // Respect the 32-request HTTP limit, while still testing queue cancellation.
-  const controllers=Array.from({length:28},()=>new AbortController());
+  // Each terminal now caps its pending FIFO to 16 requests (distinct from
+  // the existing global limit of 32 in-flight HTTP requests).
+  const controllers=Array.from({length:16},()=>new AbortController());
   const queued=controllers.map((controller,index)=>
     execute(env,'connection_0','queue_'+index,controller.signal,20000));
   try {
-    await until(()=>env.managers[0].list()[0].queued>=28,12000);
-    controllers.forEach((controller,index)=>{if(index%5!==0)controller.abort();});
+    await until(()=>env.managers[0].list()[0].queued>=16,12000);
+    // A seventeenth caller must not be admitted, nor execute in this terminal.
+    const overflow=await execute(env,'connection_0','queue_overflow',undefined,20000);
+    assert.ok(overflow.error,'Overflow must fail instead of awaiting the same shell');
+    assert.match(String(overflow.error),/queue.*limit|too many queued/i);
+    controllers.forEach((controller,index)=>{if(index%3!==0)controller.abort();});
     // Prove the worker actually released all cancelled calls BEFORE allowing
     // any other command to start. Client-side abort responses alone are not proof.
     try{
@@ -61,8 +66,9 @@ let phase='setup';
     env.releaseHold('queue_barrier');
   }
   const settled=await Promise.all(queued);assert.ok((await first).value);
-  settled.forEach((value,index)=>assert.equal(!!value.value,index%5===0));
+  settled.forEach((value,index)=>assert.equal(!!value.value,index%3===0));
   assert.equal(env.issued.filter(item=>/^queue_/.test(item.command)).length,6);
+  assert.ok(!env.issued.some(item=>item.command==='queue_overflow'));
   assert.equal(env.managers[0].list()[0].queued,0);
 
   // The hub can disappear while a user command continues in its worker.
@@ -83,6 +89,6 @@ let phase='setup';
   assert.throws(()=>env.router.resolve('stable_alias'),/Unknown shell_id/);
   await env.register(0);assert.equal(env.router.resolve('stable_alias'),'connection_0');
   assert.equal((await env.router.list()).length,3);
-  console.log('PASS: 30 worker reconnects, 20 hub restarts, 28 queued requests with 22 cancellations, preserved active command, no replay and stale-registration recovery');
+  console.log('PASS: 30 worker reconnects, 20 hub restarts, 16 queued requests with 10 cancellations and rejected overflow, preserved active command, no replay and stale-registration recovery');
  }finally{await env.stop();}
 })().catch(error=>{console.error(phase,error);process.exitCode=1;});

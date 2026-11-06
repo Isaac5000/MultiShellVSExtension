@@ -6,7 +6,7 @@
 
 ## Español
 
-**Código fuente 0.10.69 · VS Code 1.99 o posterior · Licencia MIT**
+**Código fuente 0.10.72 · VS Code 1.99 o posterior · Licencia MIT**
 
 MultiShell MCP Server conecta varias ventanas y terminales de Visual Studio Code a un servidor MCP local. Los comandos siempre seleccionan una terminal por su ID o alias. Las terminales pueden trabajar simultáneamente, con una cola FIFO independiente para cada una.
 
@@ -24,6 +24,12 @@ MultiShell MCP Server conecta varias ventanas y terminales de Visual Studio Code
 **Nuevo en 0.10.64:** retirada del simulador de chats automáticos, de la ejecución independiente por IA/API y de sus componentes no utilizables desde un chat normal de ChatGPT. Se conservan las herramientas MCP, el túnel y los checkpoints recuperables entre chats. La creación del chat siguiente sigue siendo manual. [Viabilidad](docs/es/viabilidad-autocontinuacion-chatgpt.md).
 
 **Nuevo en 0.10.65:** auditoría con skills y correcciones verificadas de lectura segura de checkpoints, límite de memoria para edición por líneas, anotaciones de seguridad MCP y exclusión de metadatos de desarrollo del VSIX. Sin cambios de túnel ni APIs facturables. [Informe](docs/es/auditoria-skills-2026-11-05.md).
+
+**Nuevo en 0.10.72:** las pruebas de VS Code eliminan perfiles temporales inactivos y conservan el último diagnóstico fallido. Mantenimiento seguro con npm run storage:cleanup (vista previa) y npm run storage:cleanup -- --apply. Solo afecta a perfiles de prueba y copias antiguas verificadas del túnel, nunca instalaciones de VS Code. Máximo 16 peticiones en espera por terminal.
+
+**Nuevo en 0.10.71:** skills preferidas por proyecto y, si ya está autorizado, por usuario. Botón de estrella en el panel; los listados MCP las priorizan sin cargar instrucciones ni modificar permisos. Máximo 24 por ámbito.
+
+**Nuevo en 0.10.70:** los arranques nuevos utilizan únicamente el túnel nativo del VSIX verificado. Se retira la descarga durante la ejecución; ante una instalación incompleta se pide reinstalar el VSIX. Se mantiene la recuperación de procesos antiguos activos y verificados.
 
 **Nuevo en 0.10.69:** un único VSIX con túnel oficial obligatorio por sistema. Se unifican los comandos y las comprobaciones de los instaladores; el plugin opcional sigue siendo un ZIP independiente.
 
@@ -133,7 +139,7 @@ npm run package
 npm run package:plugin
 ```
 
-Para evitar ejecuciones largas, compila una vez y divide las 133 pruebas en cinco tandas (sustituye 1 por 2–5 y cambia el nombre del informe):
+Para evitar ejecuciones largas, compila una vez y divide las 157 pruebas en cinco tandas (sustituye 1 por 2–5 y cambia el nombre del informe):
 
 ```bash
 npm run bundle
@@ -143,7 +149,7 @@ node scripts/aggregate-test-reports.cjs .vscode-test/test-results
 
 Las pruebas se ejecutan **localmente** con `npm run test:multishell`. Se ha retirado el workflow de GitHub Actions para evitar trabajos sujetos a facturación. Las pruebas gráficas de VS Code necesitan PowerShell 7 (`pwsh`).
 
-Genera `multi-shell-mcp-server-0.10.69-win32-x64.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
+Genera `multi-shell-mcp-server-0.10.72-win32-x64.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
 
 La dirección local predeterminada es `http://127.0.0.1:3000/mcp`.
 
@@ -174,7 +180,7 @@ Adaptación de [juehang/vscode-mcp-server](https://github.com/juehang/vscode-mcp
 
 ## English
 
-**Source code 0.10.69 · VS Code 1.99 or later · MIT license**
+**Source code 0.10.72 · VS Code 1.99 or later · MIT license**
 
 MultiShell MCP Server connects several Visual Studio Code windows and terminals to a local MCP server. Commands always target a terminal by ID or alias. Terminals can run in parallel, with an independent FIFO command queue per terminal.
 
@@ -192,6 +198,12 @@ MultiShell MCP Server connects several Visual Studio Code windows and terminals 
 **New in 0.10.64:** removed fake chat-continuation UI and independent model/API agents that cannot advance regular ChatGPT chats. Retained core MCP tools, tunnel and safe cross-chat handoffs. Creating the next ChatGPT chat remains manual. [Feasibility](docs/en/chatgpt-autonomous-continuation-feasibility.md).
 
 **New in 0.10.65:** skills-assisted review with verified fixes for checkpoint read races, bounded whole-file edits, MCP safety annotations and exclusion of development skill metadata from VSIX. No tunnel or paid API changes. [Report](docs/en/skills-security-audit-2026-11-05.md).
+
+**New in 0.10.72:** VS Code test harnesses prune inactive test profiles while preserving the latest failed diagnostic. Safe maintenance via npm run storage:cleanup (dry run) and npm run storage:cleanup -- --apply; only test profiles and verified idle tunnel backups are removed, never VS Code-managed installations. At most 16 waiting calls per terminal.
+
+**New in 0.10.71:** preferred skills per workspace and optional authorized user scope. Star toggle in the panel; MCP discovery ranks favorites first without loading instructions or widening permissions. At most 24 per scope.
+
+**New in 0.10.70:** fresh launches require the bundled native tunnel. Runtime downloads and idle legacy fallbacks are removed; a damaged VSIX must be reinstalled. Verified live processes from older versions remain adoptable.
 
 **New in 0.10.69:** one native platform VSIX per build, with the official tunnel always bundled. Unified build/validation helpers; the optional MCP plugin remains a separate ZIP.
 
@@ -301,7 +313,7 @@ npm run package
 npm run package:plugin
 ```
 
-For shorter runs, compile once and execute the 133-suite regression set in five batches (replace 1 with 2–5 and adjust the report name):
+For shorter runs, compile once and execute the 157-suite regression set in five batches (replace 1 with 2–5 and adjust the report name):
 
 ```bash
 npm run bundle
@@ -311,7 +323,7 @@ node scripts/aggregate-test-reports.cjs .vscode-test/test-results
 
 Run the tests **locally** using `npm run test:multishell`. The GitHub Actions workflow has been removed to avoid billed jobs. Real VS Code integration tests also require PowerShell 7 (`pwsh`).
 
-Generate `multi-shell-mcp-server-0.10.69-win32-x64.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
+Generate `multi-shell-mcp-server-0.10.72-win32-x64.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
 
 The default local endpoint is `http://127.0.0.1:3000/mcp`.
 

@@ -31,7 +31,9 @@ make(B,'.agents/skills','collision','Workspace B');
 make(HA,'.agents/skills','global-same','Machine A');
 make(HB,'.agents/skills','global-same','Machine B');
 const secret='e'.repeat(64);
-const wa=new multi.WindowWorker(new FakeShellManager(),secret,A,undefined,undefined,false,()=>true,HA);
+let preferA=true;
+const wa=new multi.WindowWorker(new FakeShellManager(),secret,A,undefined,undefined,false,
+ ()=>true,HA,()=>preferA?['@global/agents/global-same']:[]);
 let consentB=false;
 const wb=new multi.WindowWorker(new FakeShellManager(),secret,B,undefined,undefined,false,()=>consentB,HB);
 let server;
@@ -53,8 +55,10 @@ async function run(){
   router.assigned.get('shell_A').cwd=path.join(root,'inaccessible-remote-A');
   router.assigned.get('shell_B').cwd=path.join(root,'inaccessible-remote-B');
   assert.ok(!fs.existsSync(router.root('shell_A')));
-  assert.deepEqual((await router.skillList('shell_A','all',true)).skills.map(x=>x.name),
-    ['collision','global-same']);
+  const preferredA=await router.skillList('shell_A','all',true);
+  assert.deepEqual(preferredA.skills.map(x=>x.name),['global-same','collision']);
+  assert.equal(preferredA.skills[0].preferred,true,
+    'The owning worker should signal its favorites, not the hub filesystem');
   const denied=await router.skillList('shell_B','all',true);
   assert.deepEqual(denied.skills.map(x=>x.name),['collision']);
   assert.ok(denied.warnings.some(x=>/disabled in the owning/i.test(x)));
@@ -98,6 +102,12 @@ async function run(){
   }
   const modern=(await rpc('skills/list',{},true)).result;
   assert.equal(modern.skills.length,4,'Same-named global and project skills must remain per-window');
+  assert.equal(modern.skills[0].uri,
+    'skill://workspace/shell_A/global-agents/global-same/SKILL.md',
+    'MCP v2 must advertise preferred metadata first without altering frontmatter');
+  preferA=false;
+  assert.deepEqual((await router.skillList('shell_A','all',true)).skills.map(x=>x.name),
+    ['collision','global-same'],'Preferences should update without server restart');
   const indexes=await rpc('resources/read',{uri:'skill://index.json'});
   const index=JSON.parse(indexes.result.contents[0].text);
   assert.equal(index.skills.length,4);

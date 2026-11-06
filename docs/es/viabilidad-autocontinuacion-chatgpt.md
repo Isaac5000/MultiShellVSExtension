@@ -123,4 +123,4 @@ representar una funcionalidad que el host no ofrece.
 
 Compatible con 0.10.64.
 
-Documentación compatible con 0.10.69.
+Documentación compatible con 0.10.72.

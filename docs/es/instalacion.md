@@ -2,19 +2,19 @@
 
 [English](../en/installation.md) · [Índice](../../README.md)
 
-Guía vigente para **MultiShell MCP Server 0.10.69**. Requiere **Visual Studio Code 1.99 o posterior**.
+Guía vigente para **MultiShell MCP Server 0.10.72**. Requiere **Visual Studio Code 1.99 o posterior**.
 
 ## Instalar o actualizar desde VSIX
 
-El instalador es `multi-shell-mcp-server-0.10.69-win32-x64.vsix`. Se genera en la raíz del proyecto; un clon de Git **no lo contiene**, porque los paquetes generados están excluidos del repositorio.
+El instalador es `multi-shell-mcp-server-0.10.72-win32-x64.vsix`. Se genera en la raíz del proyecto; un clon de Git **no lo contiene**, porque los paquetes generados están excluidos del repositorio.
 
 Desde VS Code, ejecuta **Extensions: Install from VSIX...**, selecciona el archivo y después **Developer: Reload Window**. También puedes utilizar:
 
 ```powershell
-code --install-extension .\multi-shell-mcp-server-0.10.69-win32-x64.vsix --force
+code --install-extension .\multi-shell-mcp-server-0.10.72-win32-x64.vsix --force
 ```
 
-La sintaxis anterior corresponde a Windows x64. En Linux utiliza `./` y el VSIX correspondiente a tu plataforma (por ejemplo, `multi-shell-mcp-server-0.10.69-linux-x64.vsix`), nunca el instalador de Windows.
+La sintaxis anterior corresponde a Windows x64. En Linux utiliza `./` y el VSIX correspondiente a tu plataforma (por ejemplo, `multi-shell-mcp-server-0.10.72-linux-x64.vsix`), nunca el instalador de Windows.
 
 Tras actualizar, comprueba la versión y el estado ON. MultiShell verifica automáticamente las terminales de PowerShell conservadas; no pide confirmar manualmente que están libres. Si la inspección falla o el proceso sigue activo, la terminal permanece protegida.
 
@@ -31,7 +31,7 @@ npm run lint
 npm run package
 ```
 
-El resultado es `multi-shell-mcp-server-0.10.69-win32-x64.vsix`. Para realizar la batería completa de validación de Windows, incluida auditoría de dependencias de producción e inspección del paquete:
+El resultado es `multi-shell-mcp-server-0.10.72-win32-x64.vsix`. Para realizar la batería completa de validación de Windows, incluida auditoría de dependencias de producción e inspección del paquete:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-windows.ps1
@@ -61,7 +61,7 @@ Después de ejecutar `npm run package`, con Python 3 puedes generar un archivo p
 python scripts/make-portable.py
 ```
 
-En Windows también funciona `py scripts/make-portable.py`. El ZIP `MultiShell-MCP-Server-0.10.69-portable.zip` contiene la carpeta `MultiShell-MCP-Server-0.10.69` con código fuente, pruebas, scripts, documentación, instalador VSIX y manifiesto de integridad SHA-256.
+En Windows también funciona `py scripts/make-portable.py`. El ZIP `MultiShell-MCP-Server-0.10.72-portable.zip` contiene la carpeta `MultiShell-MCP-Server-0.10.72` con código fuente, pruebas, scripts, documentación, instalador VSIX y manifiesto de integridad SHA-256.
 
 Se excluyen `node_modules`, `out`, `dist`, archivos de configuración privados, sesiones y datos del túnel. Verifica su contenido antes de compartirlo.
 
@@ -71,7 +71,7 @@ Cada compilación genera **un único VSIX para el sistema y la arquitectura sele
 
 La extensión mantiene la identidad `local-multishell.multi-shell-mcp-server` y la licencia MIT. El crédito a [juehang/vscode-mcp-server](https://github.com/juehang/vscode-mcp-server) figura en el [README](../../README.md).
 
-Documentación compatible con 0.10.69.
+Documentación compatible con 0.10.72.
 
 Compatible con 0.10.61.
 

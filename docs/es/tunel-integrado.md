@@ -1,6 +1,6 @@
 # Túnel oficial integrado en el VSIX
 
-**MultiShell MCP 0.10.69.** Una sola implementación de la extensión en **TypeScript/JavaScript**, ejecutada por Node.js de VS Code en Windows, Linux y macOS. El túnel oficial sigue siendo código nativo (OpenAI Tunnel Client v0.0.19 + cloudflared), sin reescribir su autenticación, protocolos ni supervisión.
+**MultiShell MCP 0.10.72.** Una sola implementación de la extensión en **TypeScript/JavaScript**, ejecutada por Node.js de VS Code en Windows, Linux y macOS. El túnel oficial sigue siendo código nativo (OpenAI Tunnel Client v0.0.19 + cloudflared), sin reescribir su autenticación, protocolos ni supervisión.
 
 ## Distribución por plataforma
 
@@ -27,7 +27,7 @@ npm run package
 
 Esto genera **un único VSIX integrado** en Windows x64:
 
-- `multi-shell-mcp-server-0.10.69-win32-x64.vsix`
+- `multi-shell-mcp-server-0.10.72-win32-x64.vsix`
 El plugin MCP, cuando se necesite, se genera por separado mediante `npm run package:plugin` o junto al VSIX mediante `npm run package:all`.
 
 Para otra plataforma:
@@ -67,10 +67,14 @@ Fuentes:
 - [OpenAI Tunnel Client: restricciones de macOS](https://github.com/openai/tunnel-client/blob/master/README.md)
 - [VS Code: extensiones específicas por plataforma](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
 
-## Selección del ejecutable (0.10.69)
+## Selección del ejecutable (0.10.72)
 
 En un **arranque nuevo**, incluido el inicio automático, se usa primero el ejecutable nativo verificado incluido en la extensión. La copia de globalStorage solo se selecciona para adoptar con seguridad un proceso legacy todavía en ejecución cuando su PID, hora de inicio, ejecutable y argumentos coinciden con el bloqueo verificado. Un bloqueo obsoleto o una copia antigua inactiva no altera esa prioridad. Ahora únicamente se distribuyen instaladores con el túnel integrado.
 
 ## Recuperación verificada tras actualizar la extensión
 
 Puede recuperarse un túnel de una versión anterior si su directorio de extensión sigue disponible, el binario oficial supera las comprobaciones de integridad y el bloqueo de propiedad coincide con su PID, fecha de inicio, ejecutable y argumentos. Los bloqueos antiguos, versiones ya desinstaladas y procesos ajenos permanecen intactos. Un arranque nuevo usa la versión integrada actual. Instalar o recargar la extensión puede interrumpir la conexión MCP, por lo que conviene actualizar de forma controlada.
+
+## Requisito de integridad (0.10.72)
+
+Un arranque nuevo requiere los binarios oficiales **incluidos en el propio VSIX** y verificados por SHA-256. Ni el botón de verificación ni el arranque automático descargan ejecutables a globalStorage. Un archivo ausente o manipulado requiere reinstalar el VSIX correcto. Las copias anteriores se conservan exclusivamente para adoptar un proceso todavía activo con huella de propiedad coincidente; ninguna copia inactiva puede iniciar un túnel nuevo. Los perfiles, claves y procesos ajenos permanecen intactos.

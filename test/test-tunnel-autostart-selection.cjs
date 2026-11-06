@@ -115,19 +115,19 @@ global.fetch=async()=>new Response('{}',{status:200});
   assert.equal(await adoption.install(),embeddedExe,
    'Dead legacy process must not keep selection locked to old binaries');
 
-  // Case 5: Generic slim extension without embedded binaries may still use
-  // a verified globalStorage installation.
+  // Case 5: The current VSIX requires its bundled binary. No new
+  // process may start from a leftover globalStorage copy if it is missing.
   embeddedValid=false;
   fs.rmSync(lockFile,{force:true});
-  assert.equal(await adoption.install(),legacyExe,
-   'Preserve fallback for an unbundled VSIX');
+  await assert.rejects(adoption.install(),/integrated|bundled|VSIX/i,
+   'Missing native VSIX tunnel must never use legacy files for a new start');
   embeddedValid=true;
 
   // Case 6: Old executable becomes unusable, but embedded remains verified.
   legacyValid=false;
   assert.equal(await adoption.install(),embeddedExe,
    'A verified embedded copy must not depend on an invalid old copy');
-  console.log('PASS integrated autostart: embedded-first; verified live legacy adoption; stale lock rejection; generic fallback');
+  console.log('PASS integrated autostart: embedded-first; verified live legacy adoption; stale lock rejection; no idle fallback');
  }finally{
   for(const manager of active){manager.dispose();}
   global.fetch=oldFetch;

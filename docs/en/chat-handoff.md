@@ -34,4 +34,4 @@ Read access follows MCP file permissions; saving checkpoints additionally requir
 
 After VS Code reload, call `list_shells_code` and choose the **current exact shell**; do not reuse an old shell ID from a saved prompt. The handoff ID remains stable. A cross-process capacity lock prevents simultaneous saves from exceeding the checkpoint quota.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.

@@ -87,7 +87,7 @@ See [Installation](installation.md) for updates and [Validation](validation.md) 
 
 The global `multi-shell-mcp.interactiveAutoExit` setting defaults to `true`. The panel supports a per-window preference with per-terminal overrides. Automatic exit only attempts `q` for recognized standalone interactive commands; universal detection of keyboard-waiting processes is not guaranteed.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.
 
 Compatible with 0.10.59.
 

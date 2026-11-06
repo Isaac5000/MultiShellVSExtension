@@ -5,7 +5,7 @@
   "multiShell.listSkills": "MultiShell MCP: Mostrar skills disponibles",
   "multiShell.info": "MultiShell MCP: Mostrar información del servidor",
   "multiShell.interactiveAutoExitDesc": "Salir automáticamente de programas interactivos independientes reconocidos (por ejemplo, less, more o top). Puedes cambiarlo por ventana y por terminal desde el panel MultiShell.",
-  "multiShell.tunnelInstall": "MultiShell MCP: Túnel — Instalar versión oficial 0.0.19",
+  "multiShell.tunnelInstall": "MultiShell MCP: Túnel — Verificar cliente integrado 0.0.19",
   "multiShell.tunnelConfigure": "MultiShell MCP: Túnel — Configurar API key y perfil",
   "multiShell.tunnelStart": "MultiShell MCP: Túnel — Iniciar",
   "multiShell.tunnelStop": "MultiShell MCP: Túnel — Detener (solo propio)",

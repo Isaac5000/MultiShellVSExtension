@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { MCPServer, ToolConfiguration } from './server';
 import {listWorkspaceSkills} from './tools/agent-skills';
+import {getPreferredPaths} from './tools/skill-preferences';
 import { MultiWindowController, WindowRouter, getSecret } from './multi-window';
 import { MultiShellPanel } from './panel';
 import type { SavedIdleProof } from './shell-manager';
@@ -152,7 +153,9 @@ async function start(context:vscode.ExtensionContext):Promise<void>{
           context.workspaceState.get<boolean>('multiShellWindowAutoExit',config().interactiveAutoExit),
           context.workspaceState.get<Record<string,boolean>>('multiShellInteractiveShellOverrides',{}),
           context.workspaceState.get<Record<string,SavedIdleProof>>('multiShellSafeIdleProofs',{}),
-          async id=>context.workspaceState.update('multiShellPrimaryId',id));
+          async id=>context.workspaceState.update('multiShellPrimaryId',id),
+          ()=>getPreferredPaths(context.workspaceState,context.globalState,
+              config().tools.globalSkills===true));
         try {
             await next.start();
             // A failed workspace-state write must not orphan the already-open hub.
@@ -412,13 +415,13 @@ function registerTunnelCommands(context:vscode.ExtensionContext):void{
         try{
             await vscode.window.withProgress({
                 location:vscode.ProgressLocation.Notification,
-                title:'MultiShell: installing verified Tunnel Client v0.0.19'
+                title:'MultiShell: verifying bundled Tunnel Client v0.0.19'
             },async progress=>{
                 await tunnelManager!.install();
                 progress.report({message:'Verified against official SHA-256'});
             });
-            vscode.window.showInformationMessage('MultiShell: Tunnel Client v0.0.19 installed and verified.');
-        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel installation: '+String(e));}
+            vscode.window.showInformationMessage('MultiShell: bundled Tunnel Client v0.0.19 verified.');
+        }catch(e){vscode.window.showErrorMessage('MultiShell tunnel verification: '+String(e));}
     }));
     context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelConfigure',async()=>{
         if(vscode.workspace.isTrusted===false){

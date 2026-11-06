@@ -2,6 +2,27 @@
 
 [English version](../en/changelog.md) · [Índice del proyecto](../../README.md)
 
+## 0.10.72 — Limpieza segura y retención acotada
+
+- Las pruebas con dos ventanas eliminan perfiles aislados antiguos solo si no hay procesos activos, y preservan temporalmente el último perfil fallido.
+- Las pruebas de terminales limpian su perfil de VS Code aislado tras una ejecución correcta; nunca interrumpen terminales ajenas.
+- Mantenimiento con vista previa predeterminada: npm run storage:cleanup; ejecución explícita: npm run storage:cleanup -- --apply. Retira perfiles de prueba y copias verificadas de túneles antiguos que estén inactivas, nunca versiones instaladas gestionadas por VS Code.
+- Cada terminal admite 16 solicitudes en espera. El exceso se rechaza sin enviar comandos ni tocar los procesos activos.
+
+## 0.10.71 — Skills preferidas sin ejecución automática
+
+- Selección persistente por proyecto y opcional global, guardada como rutas exactas y limitadas en el estado de VS Code. No se copian SKILL.md ni se insertan instrucciones automáticamente en el contexto.
+- El panel permite marcar o desmarcar mediante una estrella sin reiniciar MCP. Las herramientas de descubrimiento señalan y priorizan las preferidas; el protocolo moderno conserva el manifiesto estándar.
+- Las skills globales permanecen ocultas si no existe permiso de lectura global. Se conserva el aislamiento por ventana y proyecto.
+- Pruebas de paginación, nombres duplicados, permisos, selección por ventana remota y controles accesibles.
+
+## 0.10.70 — Fallo seguro si falta el túnel integrado
+
+- Los arranques nuevos exigen Tunnel Client y cloudflared verificados dentro del VSIX de la plataforma. Una copia antigua inactiva de globalStorage ya no puede convertirse en el ejecutable seleccionado.
+- Retirado el descargador durante la ejecución. La antigua acción Instalar pasa a Verificar cliente integrado; un VSIX incompleto muestra un error de reinstalación sin tocar claves ni perfiles.
+- Se mantiene la adopción de procesos antiguos activos solo con la identidad y el ejecutable verificados contra el bloqueo de propiedad.
+- Añadidas pruebas de regresión de fallo seguro y actualizadas las guías de validación local. Sin APIs de pago ni workflow de GitHub Actions.
+
 ## 0.10.69 — Un solo VSIX obligatorio con túnel por plataforma
 
 - `npm run package` genera un único VSIX que incluye Tunnel Client oficial verificado y cloudflared para el sistema y la arquitectura seleccionados.

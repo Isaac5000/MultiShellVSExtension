@@ -58,3 +58,8 @@ Consequently, this is **not** proof that the active process was launched from th
 **Documentation update (0.10.68):** this report remains historical; verified cross-version recovery is documented in [Embedded tunnel](embedded-tunnel.md).
 
 **Later distribution update (0.10.69):** the 0.10.66 measurements remain historical; new builds produce only the integrated native VSIX.
+
+**Later update (0.10.70):** this report retains its historical measurements. Fresh launches now require the verified bundled client; runtime downloading has been removed.
+
+**Documentation update (0.10.71):** skill preferences do not change the tunnel; this report retains earlier installation measurements.
+**0.10.72 note:** this historical report predates safe retention and cleanup tests.

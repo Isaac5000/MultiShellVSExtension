@@ -123,7 +123,8 @@ export class WindowWorker {
                     .get<boolean>('globalCodexSkills')??false;
             }catch{return false;}
         },
-        private readonly skillHomeDir?:string){
+        private readonly skillHomeDir?:string,
+        private readonly preferredSkills:()=>readonly string[]=()=>[]){
         this.workspace=workspace;
         this.machineId=createHash('sha256').update('multi-shell-machine-v1:').update(secret).digest('hex').slice(0,20);
         const name=(path.basename(workspace)||'window').replace(/[^A-Za-z0-9_-]/g,'-').slice(0,22);
@@ -374,7 +375,8 @@ export class WindowWorker {
                             require('./tools/agent-skills') as typeof import('./tools/agent-skills');
                         const allowed=this.globalSkillPermission();
                         const options:SkillOptions={includeGlobal:allowed&&r.include_global===true,
-                            ...(this.skillHomeDir?{homeDir:this.skillHomeDir}:{})};
+                            ...(this.skillHomeDir?{homeDir:this.skillHomeDir}:{}),
+                            preferredPaths:this.preferredSkills()};
                         if(r.op==='skill_list'){
                             result=listWorkspaceSkills(root,{...options,scope:r.skill_scope||'all',query:r.skill_query,nameOnly:r.skill_name_only===true,cursor:r.skill_cursor,limit:r.skill_limit});
                             if(r.include_global&&!allowed){
@@ -943,11 +945,14 @@ export class MultiWindowController {
         windowAutoExit=true,
         shellInteractiveOverrides:Record<string,boolean>={},
         savedIdleProofs:Record<string,SavedIdleProof>={},
-        private readonly onPrimaryChanged?:((id:string)=>Promise<void>)) {
+        private readonly onPrimaryChanged?:((id:string)=>Promise<void>),
+        private readonly preferredSkills?:()=>readonly string[]) {
         this.localShells=new ShellManager();
         this.localShells.setInteractivePolicy?.(windowAutoExit,shellInteractiveOverrides);
         this.localShells.setSavedIdleProofs?.(savedIdleProofs);
-        this.worker=new WindowWorker(this.localShells,token,workspace,onAliasChanged,onUserShellCreated,true);
+        this.worker=new WindowWorker(this.localShells,token,workspace,
+            onAliasChanged,onUserShellCreated,true,undefined,undefined,
+            ()=>this.preferredSkills?.()||[]);
         this.primaryShellId='main-'+this.worker.id;
         this.worker.aliases.set(this.primaryShellId,primaryAlias && /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(primaryAlias) ? normalizeAlias(primaryAlias) : suggestAlias(workspace));
         this.router=new WindowRouter(token);

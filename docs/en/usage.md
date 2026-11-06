@@ -272,7 +272,7 @@ After reconnection, a response from the previous connection is discarded: it can
 
 When the extension restarts its manager, previous requests settle and their listeners are removed. Preserving a terminal process does not retain the old manager's waits. Queued commands are not dispatched during restart.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.
 
 Compatible with 0.10.59.
 

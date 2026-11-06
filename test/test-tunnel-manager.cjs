@@ -9,6 +9,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'multishell-tunnel-manager-'));
 const executable=path.join(root,'fake','tunnel-client.exe');
 const state=new Map(),secrets=new Map(),events=[],calls=[];
 const context={
+ extensionUri:{fsPath:path.join(root,'installed-extension')},
  globalStorageUri:{fsPath:root},
  globalState:{get(key,defaultValue){return state.has(key)?state.get(key):defaultValue;},
   async update(key,value){state.set(key,value);}},

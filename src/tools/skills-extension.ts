@@ -104,7 +104,7 @@ async function manifestForShell(shells:ShellApi,id:string,selected:string,option
     return buildSkillEntry(shells.root(id),id,selected,options);
 }
 async function listCandidates(shells:ShellApi,options:SkillOptions):Promise<Array<{
-    shellId:string;selected:string;uri:string
+    shellId:string;selected:string;uri:string;preferred:boolean
 }>>{
     const active=skillDiscoveryShells(await shells.list());
     const batches=await Promise.all(active.map(async shell=>{
@@ -113,10 +113,12 @@ async function listCandidates(shells:ShellApi,options:SkillOptions):Promise<Arra
             // Discover metadata first. File hashing belongs only to the page
             // requested by the client, not to every skill on every page.
             return skills.map(skill=>({shellId:shell.shell_id,
-                selected:skill.skill_path,uri:skillUri(shell.shell_id,skill)}));
+                selected:skill.skill_path,uri:skillUri(shell.shell_id,skill),
+                preferred:skill.preferred===true}));
         }catch{return [];}
     }));
-    return batches.flat().sort((a,b)=>a.uri.localeCompare(b.uri));
+    return batches.flat().sort((a,b)=>Number(b.preferred)-Number(a.preferred)||
+        a.uri.localeCompare(b.uri));
 }
 export function registerSkillsExtension(mcp:McpServer,shells:ShellApi,options:SkillOptions={}):void {
     const skillFile=z.object({uri:z.string(),digest:z.string(),size:z.number().int().nonnegative()});

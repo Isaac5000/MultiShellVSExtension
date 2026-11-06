@@ -60,4 +60,4 @@ The project-level `skills-lock.json` records third-party skill source hashes and
 
 **Release gate:** all suites pass; VSIX contents and privacy verified; tunnel health checked; installed-version behavior validated separately after an intentional manual update.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.

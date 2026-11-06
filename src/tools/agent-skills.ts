@@ -34,6 +34,8 @@ export interface SkillOptions {
     nameOnly?:boolean;
     cursor?:string;
     limit?:number;
+    /** Pure metadata ranking; never loads instructions or grants access. */
+    preferredPaths?:readonly string[];
 }
 const MAX_SKILLS=100;
 const MAX_SKILL_BYTES=128*1024;
@@ -63,6 +65,8 @@ export interface SkillInfo {
     scope:SkillScope;
     shell_id?:string;
     uri?:string;
+    /** User-preferred metadata only; not an activation flag. */
+    preferred?:boolean;
 }
 function validName(name:string):boolean{
     return name.length<=64&&NAME.test(name);
@@ -279,7 +283,11 @@ export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
     const query=options.query?.trim().toLowerCase();
     if(query&&query.length>100){throw new Error('Skill search query exceeds 100 characters.');}
     let matched=0,visited=0;
-    for(const source of Object.keys(SOURCES) as SkillSource[]){
+    const preferred=new Set(options.preferredPaths||[]);
+    // With preferences gather bounded metadata before paging, ensuring that
+    // selected skills beyond the first page appear first. No content is loaded.
+    const ranked:SkillInfo[]=[];
+    scan: for(const source of Object.keys(SOURCES) as SkillSource[]){
         const def=SOURCES[source];
         if(options.scope&&options.scope!=='all'&&def.scope!==options.scope){continue;}
         if(def.scope==='global'&&!options.includeGlobal){continue;}
@@ -296,7 +304,11 @@ export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
             continue;
         }
         for(const entry of entries.sort((a,b)=>a.name.localeCompare(b.name))){
-            if(++visited>4096){warnings.push('Skill scan limited to 4096 entries. Narrow the scope.');return {skills,warnings};}
+            if(++visited>4096){
+                warnings.push('Skill scan limited to 4096 entries. Narrow the scope.');
+                if(preferred.size){break scan;}
+                return {skills,warnings};
+            }
             if(source==='global-codex' && entry.name==='.system'){continue;}
             if(!entry.isDirectory()&&!(def.scope==='global'&&entry.isSymbolicLink())){continue;}
             if(!validName(entry.name)){
@@ -307,6 +319,10 @@ export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
                 const info=indexedSkillInfo(root,folder,source,entry,options);
                 if(query&&!info.name.toLowerCase().includes(query)&&
                     (options.nameOnly||!info.description.toLowerCase().includes(query))){continue;}
+                if(preferred.size){
+                    ranked.push({...info,preferred:preferred.has(info.skill_path)});
+                    continue;
+                }
                 if(matched++<start){continue;}
                 if(skills.length===limit){
                     warnings.push('More skills available; continue with next_cursor and the same scope/query.');
@@ -319,6 +335,13 @@ export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
                     (e instanceof Error?e.message:String(e)));
             }
         }
+    }
+    if(preferred.size){
+        ranked.sort((a,b)=>Number(b.preferred===true)-Number(a.preferred===true));
+        const page=ranked.slice(start,start+limit);
+        const next=start+limit<ranked.length?String(start+limit):undefined;
+        if(next){warnings.push('More skills available; continue with next_cursor and the same scope/query.');}
+        return {skills:page,warnings,...(next?{next_cursor:next}:{})};
     }
     return {skills,warnings};
 }
@@ -493,7 +516,8 @@ export function registerSkillTools(server:ToolRegistry,shells:ShellApi,options:S
                 const found=await listSkillsForShell(shells,shell_id,{...options,scope,query,nameOnly:true,cursor,limit});
                 const entries=found.skills
                     .map(skill=>({name:skill.name,scope:skill.scope,
-                        source:skill.source,skill_path:skill.skill_path}));
+                        source:skill.source,skill_path:skill.skill_path,
+                        ...(skill.preferred?{preferred:true}:{})}));
                 const names=[...new Set(entries.map(skill=>skill.name))].sort();
                 return reply({shell_id,scope,names,entries,total:names.length,
                     next_cursor:found.next_cursor,warnings:found.warnings,global_enabled:options.includeGlobal===true});

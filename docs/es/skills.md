@@ -2,7 +2,7 @@
 
 [English](../en/skills.md) · [Índice](../../README.md)
 
-**MultiShell MCP Server 0.10.69** admite skills de proyecto basadas en la especificación Agent Skills, con `SKILL.md` y metadatos YAML (`name` y `description`).
+**MultiShell MCP Server 0.10.72** admite skills de proyecto basadas en la especificación Agent Skills, con `SKILL.md` y metadatos YAML (`name` y `description`).
 
 ## Mejoras de rendimiento de skills (0.10.54)
 
@@ -72,7 +72,7 @@ Los clientes MCP anteriores conservan sus herramientas `list_skills_code`, `read
 
 La distribución portátil está en `plugins/multishell-mcp/`, con `plugin.json`, `mcp.json` y las skills `setup` y `multishell-mcp`. El marketplace de desarrollo es `.agents/plugins/marketplace.json` (`multishell-local`).
 
-Genera **un único VSIX con túnel integrado** mediante `npm run package`; si necesitas también el plugin opcional, usa `npm run package:all`. En Windows x64 son `multi-shell-mcp-server-0.10.69-win32-x64.vsix` y, cuando se solicita, `multi-shell-mcp-plugin-0.10.69.zip`. Para instalar el plugin de forma local en un cliente compatible, selecciona el marketplace del repositorio y autoriza la instalación; la compilación no instala nada automáticamente.
+Genera **un único VSIX con túnel integrado** mediante `npm run package`; si necesitas también el plugin opcional, usa `npm run package:all`. En Windows x64 son `multi-shell-mcp-server-0.10.72-win32-x64.vsix` y, cuando se solicita, `multi-shell-mcp-plugin-0.10.72.zip`. Para instalar el plugin de forma local en un cliente compatible, selecciona el marketplace del repositorio y autoriza la instalación; la compilación no instala nada automáticamente.
 
 **Importante:** el `mcp.json` incluido apunta a `http://127.0.0.1:3000/mcp`, accesible solo desde la misma máquina y con el puerto predeterminado. ChatGPT Work en la nube debe utilizar un conector MCP registrado con túnel seguro y configuración propia. No publiques el servidor local sin autenticación directamente en Internet. El plugin aporta las skills; no concede permisos nuevos.
 
@@ -143,3 +143,9 @@ Edición compatible con 0.10.58.
 
 
 Instaladores actuales: multi-shell-mcp-server-0.10.67.vsix y multi-shell-mcp-plugin-0.10.67.zip
+
+## Skills preferidas (0.10.72)
+
+En MultiShell MCP > Skills, pulsa la estrella de una skill para marcarla como preferida. Se guarda en el estado de VS Code del proyecto (máximo 24); no se modifica SKILL.md ni se abre una terminal. Las preferidas aparecen primero, incluso si estaban en páginas posteriores. La estrella permite retirarlas en cualquier momento.
+
+Las skills personales pueden marcarse globalmente solo si el usuario ya activó multi-shell-mcp.globalCodexSkills. El permiso no se concede mediante la estrella. El listado MCP incluye un marcador de preferencia cuando corresponde; skills/list las presenta primero, pero ninguna skill se carga o ejecuta de forma automática en ChatGPT. El cliente decide cuándo leerla. La selección de cada proyecto es independiente y los datos almacenados son solo rutas.

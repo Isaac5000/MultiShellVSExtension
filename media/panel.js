@@ -120,6 +120,8 @@
     skillsTimeout: 'La búsqueda no ha respondido. Pulsa volver a detectar para reintentar.',
     moreSkills: 'Mostrar más skills',
     useSkill: 'Copiar para ChatGPT',
+    skillPreferred: 'Quitar de preferidas',
+    skillUnpreferred: 'Marcar como preferida',
     skillDetails: 'Descripción',
     skillCopied: 'Instrucción copiada. Pégala en tu chat con MultiShell MCP.',
     skillStart: 'Inicia MultiShell MCP para copiar la instrucción.',
@@ -137,7 +139,7 @@
     tunnelTab: 'Túnel',
     tunnelHeading: 'TÚNEL OPENAI',
     tunnelHelp: 'Conecta Tunnel Client aquí; para usarlo en ChatGPT también debes crear un complemento MCP en Plugins → +.',
-    tunnelInstall: 'Instalar cliente',
+    tunnelInstall: 'Verificar cliente',
     tunnelReuse: 'Usar perfil existente',
     tunnelId: 'IDENTIFICADOR DEL TÚNEL',
     tunnelProfile: 'NOMBRE DEL PERFIL NUEVO',
@@ -150,7 +152,7 @@
     tunnelAutostart: 'Iniciar túnel automáticamente',
     tunnelAutostartHelp: 'Solo cuando el coordinador MCP esté activo. No se crea un túnel remoto nuevo.',
     tunnelUnavailable: 'Gestor no disponible',
-    tunnelInstallRequired: 'Instala Tunnel Client para continuar',
+    tunnelInstallRequired: 'El cliente integrado no se puede verificar: reinstala el VSIX',
     tunnelConfigRequired: 'Necesita configurar un perfil',
     tunnelConnected: 'Túnel preparado',
     tunnelStarting: 'Proceso iniciado · verificando conexión',
@@ -164,7 +166,7 @@
     tunnelVersionInfo: 'Versión',
     tunnelRetryPaused: 'Reintentos automáticos detenidos: requiere intervención manual.',
     tunnelKeyMissing: 'Introduce la API key.',
-    tunnelInstalled: 'Cliente instalado y verificado.',
+    tunnelInstalled: 'Cliente integrado verificado.',
     tunnelConfigured: 'Perfil creado correctamente.',
     tunnelKeyUpdated: 'Clave actualizada de forma segura.',
     tunnelStarted: 'Proceso del túnel iniciado.',
@@ -418,6 +420,8 @@
     skillsTimeout: 'Search did not respond. Use detect again to retry.',
     moreSkills: 'Show more skills',
     useSkill: 'Copy for ChatGPT',
+    skillPreferred: 'Remove from preferred',
+    skillUnpreferred: 'Mark as preferred',
     skillDetails: 'Description',
     skillCopied: 'Instruction copied. Paste it into your chat with MultiShell MCP.',
     skillStart: 'Start MultiShell MCP to copy the instruction.',
@@ -435,7 +439,7 @@
     tunnelTab: 'Tunnel',
     tunnelHeading: 'OPENAI TUNNEL',
     tunnelHelp: 'Connect Tunnel Client here; to use it in ChatGPT, also create a custom MCP plugin under Plugins → +.',
-    tunnelInstall: 'Install client',
+    tunnelInstall: 'Verify client',
     tunnelReuse: 'Reuse existing profile',
     tunnelId: 'TUNNEL IDENTIFIER',
     tunnelProfile: 'NEW PROFILE NAME',
@@ -448,7 +452,7 @@
     tunnelAutostart: 'Start tunnel automatically',
     tunnelAutostartHelp: 'Only while the MCP hub is active. Does not create a remote tunnel.',
     tunnelUnavailable: 'Manager unavailable',
-    tunnelInstallRequired: 'Install Tunnel Client to continue',
+    tunnelInstallRequired: 'Bundled client verification failed: reinstall the VSIX',
     tunnelConfigRequired: 'Profile configuration required',
     tunnelConnected: 'Tunnel ready',
     tunnelStarting: 'Process started · verifying connection',
@@ -462,7 +466,7 @@
     tunnelVersionInfo: 'Version',
     tunnelRetryPaused: 'Automatic retries paused; manual intervention required.',
     tunnelKeyMissing: 'Enter the API key.',
-    tunnelInstalled: 'Client installed and verified.',
+    tunnelInstalled: 'Bundled client verified.',
     tunnelConfigured: 'Profile created successfully.',
     tunnelKeyUpdated: 'Key updated securely.',
     tunnelStarted: 'Tunnel process started.',
@@ -704,6 +708,7 @@
   let skillWarnings = [];
   let skillError = '';
   let skillBusy = false;
+  let skillPrefBusy = false;
   let skillRequest = 0;
   let skillAppend = false;
   let skillTimer;
@@ -1149,7 +1154,7 @@
     $('skillsWarnings').textContent=skillWarnings.join('\n');
     $('moreSkills').hidden=!skillCursor;
     $('moreSkills').disabled=skillBusy;
-    const rows=JSON.stringify([skillItems,state.running,state.skillsEnabled,locale]);
+    const rows=JSON.stringify([skillItems,state.running,state.skillsEnabled,locale,skillPrefBusy]);
     if(rows===skillRows){return;}
     skillRows=rows;
     const target=$('skillsList');
@@ -1185,7 +1190,20 @@
       copy.classList.add('skill-copy');
       copy.disabled=!state.running || state.skillsEnabled===false;
       if(copy.disabled){copy.title=t('skillStart');}
-      header.append(identity,copy);
+      const prefer=el('button','icon-button row-action skill-prefer',
+        skill.preferred?'★':'☆');
+      prefer.type='button';
+      prefer.title=t(skill.preferred?'skillPreferred':'skillUnpreferred');
+      prefer.setAttribute('aria-label',prefer.title+': '+skill.name);
+      prefer.setAttribute('aria-pressed',String(skill.preferred===true));
+      prefer.disabled=!enabled||skillPrefBusy;
+      prefer.addEventListener('click',()=>{
+        if(skillPrefBusy){return;}
+        skillPrefBusy=true;
+        send('skill_prefer',{key:skill.skill_path,value:!skill.preferred});
+        renderSkills();
+      });
+      header.append(identity,prefer,copy);
       row.append(header,details);
       target.append(row);
     }
@@ -1664,6 +1682,9 @@
         skillWarnings=(data.warnings||[]).filter(w=>!w.startsWith('More skills available;'));
       }
       renderSkills();
+    } else if (data.type === 'skill_preferred') {
+      skillPrefBusy=false;
+      requestSkills();
     } else if (data.type === 'ai_done') {
       aiBusy=false;
       if(data.notice==='aiAdded'){
@@ -1688,6 +1709,7 @@
       closingIds.delete(data.id);
       renderShells();
     } else if (data.type === 'error') {
+      if(skillPrefBusy){skillPrefBusy=false;renderSkills();}
       portBusy=false;
       tunnelBusy=false;
       aiBusy=false;

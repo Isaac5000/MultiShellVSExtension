@@ -38,7 +38,7 @@ const ctx={
  state:{workspace:'/repo',running:true,skillsEnabled:true,globalSkillsEnabled:true},
  skillItems:[{name:'same',description:'A detailed description that must stay collapsed.',
   skill_path:'.agents/skills/same',scope:'project'}],
- skillCursor:undefined,skillWarnings:[],skillError:'',skillBusy:false,skillRows:undefined,
+ skillCursor:undefined,skillWarnings:[],skillError:'',skillBusy:false,skillPrefBusy:false,skillRows:undefined,
  expandedSkills:new Set(),
  locale:'es',
  send:(type,data)=>sent.push({type,data}),
@@ -47,7 +47,8 @@ const ctx={
   skillsPrivate:'Global disabled',skillsUnavailable:'Not enabled',
   skillsLoading:'Loading',skillsFound:'skills found',skillsEmpty:'Empty',
   personalSkills:'Personal',project:'Project',useSkill:'Copiar para ChatGPT',
-  skillDetails:'Descripción',skillStart:'Start MCP'
+  skillDetails:'Descripción',skillStart:'Start MCP',
+  skillPreferred:'Quitar de preferidas',skillUnpreferred:'Marcar como preferida'
  })[key]||key,
  JSON
 };
@@ -60,17 +61,19 @@ function getRow(index=0){
  assert.equal(row.tag,'div');assert.match(row.className,/skill-row/);
  const [header,details]=row.children;
  assert.match(header.className,/skill-heading/);
- assert.equal(header.children.length,2,'Identity and copy button must be siblings');
- const [identity,copy]=header.children;
+ assert.equal(header.children.length,3,'Identity, favorite and copy controls must be siblings');
+ const [identity,prefer,copy]=header.children;
+ assert.equal(prefer.tag,'button');
+ assert.equal(prefer.attributes['aria-pressed'],'false');
  assert.match(identity.className,/skill-identity/);
  assert.equal(identity.children.length,2,'Name and always-visible path must share one column');
  assert.equal(details.tag,'details');
  assert.equal(details.children[0].tag,'summary');
  assert.equal(copy.tag,'button');
- return {row,identity,details,summary:details.children[0],copy};
+ return {row,identity,details,summary:details.children[0],copy,prefer};
 }
 ctx.renderSkills();
-let {identity,details,summary,copy}=getRow();
+let {identity,details,summary,copy,prefer}=getRow();
 assert.equal(details.open,false,'Descriptions must start collapsed');
 assert.equal(identity.children[0].textContent,'same');
 assert.equal(identity.children[1].textContent,'Project · .agents/skills/same',
@@ -88,10 +91,17 @@ assert.equal(copy.children[0].key,'copy','Use the existing compact copy icon');
 assert.ok(copy.attributes['aria-label'].includes('same'));
 assert.ok(!summary.children.includes(copy),'Copy control must not toggle disclosure');
 assert.ok(!details.children.includes(copy),'Copy control must stay beside the name');
+prefer.dispatch('click');
+assert.equal(sent[0].type,'skill_prefer');
+assert.equal(sent[0].data.value,true);
+assert.equal(sent[0].data.key,'.agents/skills/same');
+ctx.skillPrefBusy=false;
+ctx.renderSkills();
+copy=getRow().copy;
 copy.dispatch('click');
-assert.equal(sent.length,1);
-assert.equal(sent[0].type,'skill_copy');
-assert.equal(sent[0].data.value,'.agents/skills/same');
+assert.equal(sent.length,2);
+assert.equal(sent[1].type,'skill_copy');
+assert.equal(sent[1].data.value,'.agents/skills/same');
 assert.equal(details.open,false,'Copy action must not open the description');
 details.open=true;details.dispatch('toggle');
 assert.ok(ctx.expandedSkills.has('.agents/skills/same'),'Track user-opened disclosures');
@@ -113,7 +123,7 @@ ctx.renderSkills();
 assert.equal(getRow().copy.disabled,true,'Copy cannot be used with MCP stopped');
 assert.ok(script.includes('skillContext=context;\n      expandedSkills.clear();'),
  'A different window/workspace must clear retained disclosure state');
-assert.match(css,/\.skill-heading\s*\{[^}]*grid-template-columns:minmax\(0,1fr\) 28px/s,
+assert.match(css,/\.skill-heading\s*\{[^}]*grid-template-columns:minmax\(0,1fr\) 28px 28px/s,
  'Copy must stay to the right in a fixed-width column');
 assert.match(css,/\.skill-source\s*\{[^}]*display:block/s,
  'Path is rendered in the always-visible identity block');

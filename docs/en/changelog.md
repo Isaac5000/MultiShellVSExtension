@@ -2,6 +2,27 @@
 
 [Versión en español](../es/historial.md) · [Project index](../../README.md)
 
+## 0.10.72 — Safe cleanup and bounded retention
+
+- Real two-window VS Code tests prune stale isolated profiles only after verifying no active processes use them, keeping the newest failed diagnostic temporarily.
+- Terminal integration tests clean completed isolated profiles without terminating unrelated terminals.
+- Maintenance defaults to dry-run: npm run storage:cleanup. Use npm run storage:cleanup -- --apply to remove expired test profiles and verified idle tunnel backups; installed extension versions managed by VS Code are never deleted.
+- Maximum 16 waiting commands per terminal. Excess requests are rejected without terminal input.
+
+## 0.10.71 — Preferred skills without automatic execution
+
+- Per-workspace and optional global favorites persist as bounded exact paths in VS Code state; no SKILL.md is duplicated or loaded into context automatically.
+- The panel can mark/unmark a favorite without restarting MCP. MCP tool discovery marks preferred entries and lists them first, including modern skills/list without changing the standard manifest schema.
+- Global preferences remain invisible without explicit existing global-skill access. Workspace ownership and read-only skill authorization remain enforced.
+- Regression tests cover paging, duplicate names, scope isolation, permission revocation, remote owner routing, and accessible panel controls.
+
+## 0.10.70 — Fail closed when bundled tunnel binaries are missing
+
+- Fresh starts require a SHA-256 verified Tunnel Client and companion bundled in the OS-specific VSIX. Idle globalStorage copies can no longer become the selected executable.
+- Removed the extension-host runtime downloader and adjusted the former Install action to Verify bundled client. A corrupt or incomplete VSIX displays a reinstall error; keys and existing profiles remain untouched.
+- Continue adopting a live previously owned tunnel only when its PID, start identity, arguments and verified executable match the ownership lock.
+- Added fail-closed regression tests and updated local validation and distribution guidance. No paid API or GitHub Actions workflow.
+
 ## 0.10.69 — One required native VSIX per platform
 
 - Default `npm run package` now produces exactly one VSIX with the verified official Tunnel Client and cloudflared for the target OS and architecture.

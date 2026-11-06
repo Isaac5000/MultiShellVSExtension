@@ -106,4 +106,4 @@ by this finding.
 
 Compatible with 0.10.64.
 
-Documentation compatible with 0.10.69.
+Documentation compatible with 0.10.72.

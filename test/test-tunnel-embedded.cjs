@@ -4,6 +4,8 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const proxyquire=require('proxyquire').noCallThru();
 const tunnel=require('../out/tunnel-release.js');
+assert.equal(typeof tunnel.installOfficialTunnel,'undefined',
+ 'Runtime tunnel downloader must not be bundled into native-only builds');
 (async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'multishell-platform-tunnel-'));
  const embedded=path.join(root,'extension');
@@ -46,9 +48,9 @@ const tunnel=require('../out/tunnel-release.js');
   assert.equal(await tunnel.verifiedExecutable(shared,asset),undefined,
    'Embedded tunnel must not create a second global storage installation');
   fs.writeFileSync(path.join(expectedRoot,cloud),'TAMPERED');
-  assert.equal(await manager.install(),'downloaded-tunnel',
-   'A tampered embedded tunnel must fail closed and use the previous installer');
-  assert.equal(downloads,1);
+  await assert.rejects(manager.install(),/integrated|bundled|VSIX/i,
+   'A tampered integrated binary must fail closed, never download or start legacy files');
+  assert.equal(downloads,0,'Never download a runtime tunnel after VSIX integrity failure');
   // A leftover globalStorage copy must never override a verified embedded
   // binary for a fresh start. The separate autostart selection test verifies
   // the narrowly scoped exception for an attested, still-running old child.
@@ -58,12 +60,15 @@ const tunnel=require('../out/tunnel-release.js');
   fs.writeFileSync(path.join(oldRoot,filename),data);
   fs.writeFileSync(path.join(oldRoot,cloud),companion);
   fs.writeFileSync(path.join(oldRoot,'verified.json'),JSON.stringify(manifest));
+  await assert.rejects(manager.install(),/integrated|bundled|VSIX/i,
+   'A verified idle globalStorage copy must not rescue a broken bundled binary');
+  assert.equal(downloads,0);
   fs.writeFileSync(path.join(expectedRoot,cloud),companion);
   assert.equal(await manager.install(),path.join(expectedRoot,filename),
-   'An inactive legacy copy must not override a verified integrated tunnel');
-  assert.equal(downloads,1);
+   'Restoring verified integrated binaries must restore normal operation');
+  assert.equal(downloads,0);
   assert.ok(notifications.some(msg=>msg.includes('verified')));
-  console.log('PASS embedded tunnel: version/hash checked, zero-download path, no binary duplication, tamper fallback');
+  console.log('PASS embedded tunnel: no runtime download; fail closed on tamper and legacy; safe repair');
  }finally{
   manager.dispose();
   fs.rmSync(root,{recursive:true,force:true,maxRetries:8,retryDelay:100});

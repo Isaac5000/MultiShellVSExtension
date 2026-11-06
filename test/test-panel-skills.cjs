@@ -21,8 +21,11 @@ const mock={env:{language:'es',clipboard:{writeText:async text=>clipboard.push(t
   commands:{executeCommand:async(...args)=>commands.push(args)},
   workspace:{get isTrusted(){return trusted;},workspaceFolders:[{uri:{fsPath:other}}],
     getConfiguration:()=>({get:key=>({globalCodexSkills:globalEnabled,enabledTools:{file:fileEnabled},port:3000})[key]})}};
+const savedProject=new Map(),savedGlobal=new Map();
+const memory=values=>({get:(key,def)=>values.has(key)?values.get(key):def,
+  update:async(key,value)=>{values.set(key,value);}});
 const context={extensionUri:'file:///'+path.resolve(__dirname,'..').replaceAll('\\','/'),subscriptions:[],
-  workspaceState:{get:(_key,value)=>value,update:async()=>{}}};
+  workspaceState:memory(savedProject),globalState:memory(savedGlobal)};
 const {MultiShellPanel}=proxyquire('../out/panel.js',{vscode:mock,'./tools/agent-skills':{
   listWorkspaceSkills:(base,options)=>{scans++;return skills.listWorkspaceSkills(base,{...options,homeDir:home});},
   readWorkspaceSkill:(base,selected,options)=>skills.readWorkspaceSkill(base,selected,{...options,homeDir:home})
@@ -54,6 +57,16 @@ async function main(){
   assert.equal(result.next_cursor,undefined);
   result=await search(4,{query:'ACCESSIBILITY'});
   assert.deepEqual(result.skills.map(s=>s.name),['skill-082'],'Search must reach beyond the first page');
+  assert.equal((await send({type:'skill_prefer',key:'.agents/skills/skill-082',value:true})).type,
+    'skill_preferred');
+  assert.deepEqual(savedProject.get('multiShellPreferredProjectSkills'),
+    ['.agents/skills/skill-082']);
+  result=await search(40);
+  assert.equal(result.skills[0].skill_path,'.agents/skills/skill-082',
+    'An otherwise late page skill should become the first preferred result');
+  assert.equal(result.skills[0].preferred,true);
+  await send({type:'skill_prefer',key:'.agents/skills/skill-082',value:false});
+  assert.deepEqual(savedProject.get('multiShellPreferredProjectSkills'),[]);
   result=await search(5,{query:'skill-000'});
   assert.equal(result.skills.length,2,'Duplicate names retain exact selectable paths');
   await send({type:'skill_copy',value:'.github/skills/skill-000'});
@@ -68,6 +81,10 @@ async function main(){
   globalEnabled=true;
   result=await search(6,{scope:'global'});
   assert.deepEqual(result.skills.map(s=>s.name),['private-skill']);
+  await send({type:'skill_prefer',key:'@global/agents/private-skill',value:true});
+  assert.deepEqual(savedGlobal.get('multiShellPreferredGlobalSkills'),
+    ['@global/agents/private-skill']);
+  assert.equal((await search(61,{scope:'global'})).skills[0].preferred,true);
   await send({type:'skill_copy',value:'@global/agents/private-skill'});
   assert.match(clipboard.at(-1),/"scope":"global"/);
   let release;
@@ -77,6 +94,13 @@ async function main(){
   await tick();
   globalEnabled=false;
   await release();await tick();
+  const scopeDenied=await search(62,{scope:'global'});
+  assert.deepEqual(scopeDenied.skills,[],
+    'Revoking global access hides previously preferred global skills');
+  assert.equal((await send({type:'skill_prefer',key:'@global/agents/private-skill',
+    value:false})).type,'error','Preferences cannot be changed without global consent');
+  assert.deepEqual(savedGlobal.get('multiShellPreferredGlobalSkills'),
+    ['@global/agents/private-skill']);
   assert.equal(clipboard.length,copies+1,'Revoked permission while awaiting state must stop copy');
   controller.panelState=originalState;
   for(const value of ['../other/foreign-only','C:/outside','.agents/skills/skill-000/../../private']){

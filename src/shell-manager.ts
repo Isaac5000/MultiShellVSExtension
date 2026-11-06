@@ -71,6 +71,8 @@ interface ShellEntry {
 const SHELL_ID = /^[A-Za-z][A-Za-z0-9_-]{1,39}$/;
 const MAX_OUTPUT = 1_000_000;
 const MAX_TIMEOUT = 3_600_000;
+/** Bound waiting work per terminal, independently of global HTTP concurrency. */
+const MAX_QUEUED_PER_SHELL = 16;
 
 /** Classify potential interactive prompts without ever sending input. A
  * prompt is only an observation: program output can contain these strings as
@@ -699,6 +701,9 @@ export class ShellManager implements vscode.Disposable {
             throw new Error('Shell "'+id+'" has a command still running after its timeout. Its process was preserved because this is a user-created or primary terminal. Automatic verification will restore access when it is idle; no input was sent.');
         }
         if(signal?.aborted){throw new Error('MCP command cancelled before execution.');}
+        if(entry.queued>=MAX_QUEUED_PER_SHELL){
+            throw new Error('Per-terminal command queue limit reached (16 waiting requests). Retry after earlier commands finish.');
+        }
         entry.queued++;
         // The response can time out before the real terminal command completes.
         // This gate only opens once that command has ACTUALLY ended (or terminal closed).

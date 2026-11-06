@@ -299,7 +299,7 @@ form .checkline { display:flex; align-items:flex-start; gap:8px; font-size:11px;
 .skill-settings:hover,.skill-more:hover {background:var(--vscode-button-secondaryHoverBackground);}
 .skills-list {display:flex;flex-direction:column;padding:0 12px;gap:4px;}
 .skill-row {min-width:0;padding:4px 6px;border:1px solid var(--vscode-panel-border);border-radius:5px;}
-.skill-heading {display:grid;grid-template-columns:minmax(0,1fr) 28px;align-items:start;column-gap:4px;min-width:0;}
+.skill-heading {display:grid;grid-template-columns:minmax(0,1fr) 28px 28px;align-items:start;column-gap:4px;min-width:0;}
 .skill-identity {display:flex;flex-direction:column;gap:2px;min-width:0;padding:3px 0;}
 .skill-name {font-size:12px;min-width:0;overflow-wrap:anywhere;}
 .skill-source {display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -316,7 +316,10 @@ form .checkline { display:flex; align-items:flex-start; gap:8px; font-size:11px;
 .skill-details[open] .skill-chevron {transform:rotate(180deg);}
 .skill-expanded {margin:2px 0 5px 17px;min-width:0;}
 .skill-description {margin:0;font-size:11px;line-height:1.5;overflow-wrap:anywhere;}
-.skill-copy {align-self:start;min-width:28px;min-height:28px;}
+.skill-copy,.skill-prefer {align-self:start;min-width:28px;min-height:28px;}
+.skill-prefer {font-size:17px;line-height:1;color:var(--vscode-descriptionForeground);}
+.skill-prefer[aria-pressed="true"] {color:var(--vscode-foreground);}
+.skill-prefer:focus-visible {outline:1px solid var(--vscode-focusBorder);outline-offset:1px;}
 .search-row input:focus-visible,.requests-disclosure summary:focus-visible,.skills-scope select:focus-visible {outline:1px solid var(--vscode-focusBorder);outline-offset:2px;}
 
 /* Tunnel configuration lives in its own tab and never displays stored secrets. */

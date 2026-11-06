@@ -14,6 +14,7 @@ async function scenario(mode){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ms-tunnel-reload-race-'));
  const state=new Map(),secrets=new Map();
  const context={
+  extensionUri:{fsPath:path.join(root,'installed-extension')},
   globalStorageUri:{fsPath:root},
   globalState:{get:(key,def)=>state.has(key)?state.get(key):def,
    update:async(key,value)=>{state.set(key,value);}},

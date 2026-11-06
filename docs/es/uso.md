@@ -278,7 +278,7 @@ Edición compatible con 0.10.58.
 
 Compatible con 0.10.59.
 
-Documentación compatible con 0.10.69.
+Documentación compatible con 0.10.72.
 
 Compatible con 0.10.61.
 

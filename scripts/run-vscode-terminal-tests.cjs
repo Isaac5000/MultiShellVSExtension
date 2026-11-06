@@ -2,6 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),crypto=require('node:crypto');
 const {spawn}=require('node:child_process');
 const {resolveTestShell}=require('./test-shell-resolver.cjs');
+const {isActiveFactory,safeRemoveTestProfile}=require('./test-profile-retention.cjs');
 const root=path.resolve(__dirname,'..');
 const base=path.join(root,'.vscode-test','terminal-integration');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -15,6 +16,17 @@ async function main(){
   ?path.join(process.env.LOCALAPPDATA||'','Programs','Microsoft VS Code','Code.exe'):'code');
  const shell=resolveTestShell();
  if(windows&&!fs.existsSync(code)){throw Error('Set VSCODE_EXECUTABLE to the VS Code executable.');}
+ fs.mkdirSync(base,{recursive:true});
+ const previousProfile=path.join(base,'profile');
+ if(fs.existsSync(previousProfile)){
+  // Refuse to reuse a profile still owned by another running VS Code.
+  // Diagnostic JSON and logs are outside this directory.
+  const active=isActiveFactory();
+  if(active(previousProfile)){throw Error('The isolated VS Code test profile is still in use.');}
+  if(!safeRemoveTestProfile(base,previousProfile,active)){
+   throw Error('Refusing to replace an unexpected or unsafe test profile.');
+  }
+ }
  for(const folder of ['test-workspace/a','test-workspace/b','profile/User','extensions']){
   fs.mkdirSync(path.join(base,folder),{recursive:true});
  }
@@ -55,7 +67,16 @@ async function main(){
    for(const check of report.checks||[]){console.log((check.passed?'PASS ':'FAIL ')+check.name+' ('+check.ms+' ms)');}
    const failures=(report.checks||[]).filter(check=>!check.passed);
    if(report.fatal||failures.length){throw Error(report.fatal||failures.map(check=>check.error).join('\n'));}
-   console.log('PASS: '+report.checks.length+' real VS Code checks; report '+reportFile);return;
+   console.log('PASS: '+report.checks.length+' real VS Code checks; report '+reportFile);
+   // A passing test does not need its disposable Electron cache. If the host
+   // has not exited yet, retain the profile and clean on the next safe run.
+   await wait(900);
+   try{
+    if(safeRemoveTestProfile(base,path.join(base,'profile'))){
+     console.log('TEST_PROFILE_CLEANED=true');
+    }else{console.log('TEST_PROFILE_CLEANED=false (host still active)');}
+   }catch(error){console.warn('TEST_PROFILE_CLEANUP_SKIPPED: '+String(error));}
+   return;
   }
   await wait(500);
  }

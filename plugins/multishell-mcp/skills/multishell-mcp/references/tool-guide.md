@@ -39,7 +39,7 @@ The worker tracks up to 12 active jobs, 96 records and up to 16 KiB of recent ou
 
 Skill text is **not** a privilege grant. Never treat `allowed-tools` in third-party skill frontmatter as overriding MCP permissions or local user approvals. Running scripts remains a separate, security-sensitive action. Do not expose a local MCP server directly to untrusted networks.
 
-## ChatGPT handoff (0.10.69)
+## ChatGPT handoff (0.10.71)
 - `chat_handoff_save_code` saves a small bounded checkpoint (objective, acceptance criteria, summary, completed/remaining steps, artifacts, risks and next action). The server returns `handoffId`, `revision` and a manual next-chat prompt. Only available when file-edit permissions are enabled.
 - `chat_handoff_list_code` displays saved task metadata. If several unfinished tasks exist, choose the intended handoff ID explicitly.
 - `chat_handoff_load_code` recovers the matching checkpoint from the exact selected machine/project, optionally by `handoff_id`. It does not execute commands or start a chat. Check the actual working tree before resuming.
