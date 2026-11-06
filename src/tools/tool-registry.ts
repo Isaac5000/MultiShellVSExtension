@@ -9,10 +9,17 @@ export class ToolRegistry {
 
     tool<S extends z.ZodRawShape>(
         name:string,description:string,shape:S,
-        handler:(args:z.output<z.ZodObject<S>>)=>Promise<CallToolResult>
+        handler:(args:z.output<z.ZodObject<S>>)=>Promise<CallToolResult>,
+        annotations?:{
+            readOnlyHint?:boolean;
+            destructiveHint?:boolean;
+            idempotentHint?:boolean;
+            openWorldHint?:boolean;
+        }
     ):void{
         this.server.registerTool(name,{
-            description,inputSchema:z.object(shape)
+            description,inputSchema:z.object(shape),
+            ...(annotations?{annotations}:{})
         },async args=>{
             const result=await handler(args as z.output<z.ZodObject<S>>);
             return {resultType:'complete' as const,ttlMs:0,

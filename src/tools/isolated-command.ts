@@ -8,7 +8,7 @@ const MAX_TIMEOUT=3_600_000;
  * This intentionally does not share terminal variables, aliases or shell history.
  * A selected shell ID supplies only the owning window and canonical cwd.
  */
-export function runIsolatedCommand(shellId:string,cwd:string,command:string,timeoutMs=120000,signal?:AbortSignal):Promise<ShellExecutionResult>{
+export function runIsolatedCommand(shellId:string,cwd:string,command:string,timeoutMs=120000,signal?:AbortSignal,onOutput?:(chunk:string)=>void):Promise<ShellExecutionResult>{
     if(!command.trim()){throw new Error('Empty isolated command.');}
     if(!Number.isInteger(timeoutMs)||timeoutMs<1000||timeoutMs>MAX_TIMEOUT){
         throw new Error('timeout must be an integer 1000..3600000 ms.');
@@ -31,6 +31,8 @@ export function runIsolatedCommand(shellId:string,cwd:string,command:string,time
         let killFallback:ReturnType<typeof setTimeout>|undefined;
         const append=(chunk:Buffer|string)=>{
             const text=String(chunk);
+            // Progress callbacks never interrupt or change the child process.
+            try{onOutput?.(text);}catch{}
             const room=MAX_OUTPUT-output.length;
             if(room>0){output+=text.slice(0,room);}
             if(text.length>room){truncated=true;}

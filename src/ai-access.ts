@@ -58,20 +58,32 @@ export function restrictedShellApi(shells:ShellApi,shellId:string,level:AiAccess
             await checkAsync(id);if(!execute||!shells.executeIsolated){denied();}
             return shells.executeIsolated(id,command,timeout,signal);
         },
-        setAlias:async()=>denied(),
-        windows:()=> {
-            const current=shells.windows?.()||[];
-            // Window enumeration by a remote profile is intentionally
-            // suppressed to avoid revealing unrelated workspaces.
-            return current.filter(()=>false);
+        startBackground:async(id,command,timeout,signal)=>{
+            await checkAsync(id);if(!execute||!shells.startBackground){denied();}
+            return shells.startBackground(id,command,timeout,signal);
         },
+        backgroundStatus:async(id,jobId,maxOutput)=>{
+            await checkAsync(id);if(!execute||!shells.backgroundStatus){denied();}
+            return shells.backgroundStatus(id,jobId,maxOutput);
+        },
+        listBackgroundJobs:async(id,max)=>{
+            await checkAsync(id);if(!execute||!shells.listBackgroundJobs){denied();}
+            return shells.listBackgroundJobs(id,max);
+        },
+        cancelBackground:async(id,jobId)=>{
+            await checkAsync(id);if(!execute||!shells.cancelBackground){denied();}
+            return shells.cancelBackground(id,jobId);
+        },
+        setAlias:async()=>denied(),
+        // Remote gateways must not enumerate unrelated workspaces.
+        windows:()=>[],
         native:async(id:string,kind:NativeKind,args:NativeArgs)=>{
             await checkAsync(id);
             if(!shells.native){denied();}
             // Native tools implemented by MultiShell are read-only.
             return shells.native(id,kind,args);
         },
-        skillList:async(id,scope,includeGlobal,options)=>{
+        skillList:async(id,scope,_includeGlobal,options)=>{
             await checkAsync(id);if(!shells.skillList){denied();}
             return shells.skillList(id,scope,false,{...options,includeGlobal:false});
         },

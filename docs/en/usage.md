@@ -2,7 +2,22 @@
 
 [Español](../es/uso.md) · [Index](../../README.md)
 
-Applies to **MultiShell MCP Server 0.10.52**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
+## Faster Agent Skills (0.10.54)
+
+Discovery uses stat-validated indexes to avoid repeated file parsing and path traversal, while retaining authorization and resource checks. For details see [Agent Skills](skills.md).
+## Long-running commands without blocking a terminal (0.10.53)
+
+Use **`start_background_command_code`** with `shell_id`, `command` and optional `timeout` (milliseconds). It returns a `job_id` immediately. Poll **`get_background_command_code`** with the same `shell_id` and `job_id` for state, elapsed time, exit code, partial output and possible wait hints. **`list_background_commands_code`** lists recent jobs, including an ID whose response was lost. **`cancel_background_command_code`** only cancels that isolated child process, never a persistent VS Code terminal or unrelated process.
+
+Jobs execute in independent OS processes using the selected shell's directory, **not its environment variables, aliases or history**. They can run while the integrated terminal is busy. There is no automatic `Ctrl+C`, `q`, `Enter` or credential entry. Known interactive commands are rejected; detected prompts are best-effort hints, not proof of a deadlock. The isolated mode disables Git credential prompts and pagers.
+
+Each VS Code worker permits 12 active background jobs, up to 96 retained records, 30-minute retention and the most recent 16 KiB of output per job (with truncation reporting). Jobs survive a **coordinator** switch or HTTP listener restart while their owning VS Code window stays alive. They **do not survive an owning-window or VS Code process restart**. Never automatically replay a command after losing its response; inspect `list_background_commands_code` first.
+
+The panel displays active job count, duration, a safe allowlisted command label without arguments and potential wait hints. Its cancellation action requests explicit local approval. Scoped AI gateways require `shell` or `full` permission and the exact authorized shell; read/edit profiles cannot manage jobs.
+
+
+
+Applies to **MultiShell MCP Server 0.10.68**. See [Installation](installation.md) for setup, or [MCP compatibility](compatibility.md) for older connector arguments.
 
 Open **Ctrl+Shift+P → MultiShell MCP: List available skills** to search and copy names, including global Codex skills when authorized. ChatGPT can also call `list_skill_names_code(shell_id="fallouttraduccion")` or use the legacy read-only `cwd="@mcp"`, `command="skills fallouttraduccion"` control query.
 
@@ -256,3 +271,17 @@ Request cancellation also reaches temporary creation, closure, and alias changes
 After reconnection, a response from the previous connection is discarded: it cannot rename a replacement terminal, remove its assignment, or mark it offline. If the connection changes during an operation, inspect the current state before repeating it; a lost response does not establish whether the operation ran.
 
 When the extension restarts its manager, previous requests settle and their listeners are removed. Preserving a terminal process does not retain the old manager's waits. Queued commands are not dispatched during restart.
+
+Documentation compatible with 0.10.69.
+
+Compatible with 0.10.59.
+
+Documentation compatible with 0.10.60.
+
+Compatible with 0.10.61.
+
+Documentation compatible with 0.10.62.
+
+Documentation compatible with 0.10.63.
+
+Compatible with 0.10.64.

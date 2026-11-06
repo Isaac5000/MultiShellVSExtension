@@ -7,9 +7,11 @@ import type {CallToolResult} from '@modelcontextprotocol/server';
 import { ShellApi } from '../shell-api';
 
 const MAX_FILES = 3000;
+/** A line replacement rebuilds the entire file in memory; cap its size. */
+const MAX_EDIT_BYTES = 32*1024*1024;
 const ignored = new Set(['.git','node_modules','.gradle','build','dist']);
 function reply(x: unknown, isError = false): CallToolResult {
-    return { isError, content: [{ type: 'text', text: typeof x === 'string' ? x : JSON.stringify(x, null, 2) }] };
+    return { isError, content: [{ type: 'text', text: typeof x === 'string' ? x : JSON.stringify(x) }] };
 }
 /** Reject escapes (including existing symlinks and ancestors for new files). */
 export function scopedPath(root: string, file: string): string {
@@ -183,7 +185,13 @@ async function read(s: ShellApi, id: string, file: string): Promise<{ data: stri
     const absolute=scopedPath(root,file);
     const {handle,identity}=await openScopedFile(root,file);
     try{
+        if(identity.size>MAX_EDIT_BYTES){
+            throw new Error('File too large for line replacement (32 MiB edit limit).');
+        }
         const data=await handle.readFile({encoding:'utf-8'});
+        if(Buffer.byteLength(data,'utf8')>MAX_EDIT_BYTES){
+            throw new Error('File too large for line replacement (32 MiB edit limit).');
+        }
         await validateOpenedFile(root,file,identity);
         return {data,absolute};
     }finally{await handle.close();}
@@ -233,7 +241,7 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
         async ({ shell_id, path: file, recursive }): Promise<CallToolResult> => {
             try { return reply(await list(s, shell_id, file, recursive)); }
             catch (e) { return reply({ error: String(e) }, true); }
-        });
+        },{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
     server.tool('read_file_code','Read a file ONLY under the named shell root.',
         { shell_id: shellId, path: relative, encoding: z.string().optional().default('utf-8'),
           maxCharacters: z.number().int().min(1).max(2_000_000).optional().default(100000),
@@ -262,7 +270,7 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
                     return reply(data);
                 }finally{await handle.close();}
             } catch (e) { return reply({ error: String(e) }, true); }
-        });
+        },{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false});
     }
     if (permissions.edit) {
     server.tool('create_file_code','Create or overwrite a file ONLY inside the named shell root. Explicit shell_id required.',
@@ -294,6 +302,9 @@ export function registerScopedFileTools(server: ToolRegistry, s: ShellApi, permi
                     const replacement=content.replace(/\r\n/g,'\n').split('\n');
                     lines.splice(startLine-1,endLine-startLine+1,...replacement);
                     const updated=lines.join(eol);
+                    if(Buffer.byteLength(updated,'utf8')>MAX_EDIT_BYTES){
+                        throw new Error('Updated file exceeds the 32 MiB edit limit.');
+                    }
                     if((await read(s,shell_id,file)).data!==data){
                         throw new Error('Concurrent file change detected; retry.');
                     }

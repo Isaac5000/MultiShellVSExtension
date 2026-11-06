@@ -2,7 +2,22 @@
 
 [English](../en/usage.md) · [Índice](../../README.md)
 
-Comportamiento de **MultiShell MCP Server 0.10.52**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
+## Lectura de skills optimizada (0.10.54)
+
+El catálogo aprovecha índices y metadatos validados para responder a búsquedas y paginación sin procesar repetidamente los mismos archivos. Se siguen comprobando permisos y rutas y el contenido se lee únicamente cuando se solicita. Consulta [Agent Skills](skills.md).
+## Comandos largos sin bloquear la terminal (0.10.53)
+
+Para compilaciones o pruebas que tardan mucho, usa **`start_background_command_code`** con `shell_id`, `command` y opcionalmente `timeout` (milisegundos). Devuelve inmediatamente un `job_id`. Después consulta **`get_background_command_code`** con el mismo `shell_id` y `job_id`; muestra estado, duración, código de salida, salida parcial y posible indicio de espera. **`list_background_commands_code`** recupera trabajos recientes y permite localizar un ID si se perdió la respuesta; **`cancel_background_command_code`** interrumpe solo el proceso aislado correspondiente, nunca una terminal persistente ni un proceso ajeno.
+
+Los trabajos se ejecutan en procesos aislados usando la carpeta de la terminal seleccionada, **sin heredar sus variables, alias o historial**, y pueden avanzar mientras la terminal integrada está ocupada. No se envían automáticamente `Ctrl+C`, `q`, `Enter` ni contraseñas. Los comandos interactivos reconocidos se rechazan; un posible prompt detectado en la salida es solo una pista, no prueba de bloqueo. Para operaciones Git la ejecución aislada desactiva paginadores y solicitudes interactivas de credenciales.
+
+Cada ventana limita los trabajos simultáneos a 12 y conserva hasta 96 registros, con retención de 30 minutos y los últimos 16 KiB de salida por trabajo (se indica truncamiento). Los trabajos sobreviven a un cambio o reinicio del **coordinador** si sigue viva su ventana propietaria. **No se garantiza recuperación al reiniciar la ventana propietaria o VS Code**. Nunca repitas automáticamente una orden si se perdió la respuesta inicial: consulta primero `list_background_commands_code` y el estado real.
+
+El panel muestra el número de trabajos activos, duración, comando reconocido sin argumentos sensibles y posibles pistas de espera. El botón local de cancelación exige confirmación explícita. Las pasarelas IA requieren permisos `shell` o `full` y acceso a la terminal exacta; solo lectura o edición no autorizan gestionar trabajos.
+
+
+
+Comportamiento de **MultiShell MCP Server 0.10.68**. Para instalar o actualizar, consulta [Instalación](instalacion.md); para parámetros de clientes antiguos, consulta [Compatibilidad MCP](compatibilidad.md).
 
 Abre **Ctrl+Mayús+P → MultiShell MCP: Mostrar skills disponibles** para consultar y copiar nombres, incluyendo las skills globales de Codex si autorizas su lectura. Por chat también puedes pedir `list_skill_names_code(shell_id="fallouttraduccion")` o, con el conector antiguo, `cwd="@mcp"` y `command="skills fallouttraduccion"`.
 
@@ -258,3 +273,17 @@ La cancelación de una petición se propaga también a la creación temporal, al
 Después de una reconexión, una respuesta de la conexión anterior se descarta: no debe cambiar el alias de una terminal nueva, borrar su registro ni hacerla aparecer desconectada. Si la conexión cambia durante una operación, consulta el estado actual antes de repetirla; una pérdida de respuesta no permite deducir si la operación llegó a ejecutarse.
 
 Cuando la extensión reinicia su gestor, las peticiones anteriores terminan y se retiran sus escuchadores. Conservar el proceso de una terminal no conserva las esperas del gestor anterior. Las órdenes que estaban en cola no se envían al reiniciar.
+
+Edición compatible con 0.10.58.
+
+Compatible con 0.10.59.
+
+Documentación compatible con 0.10.69.
+
+Compatible con 0.10.61.
+
+Documentación compatible con 0.10.62.
+
+Documentación compatible con 0.10.63.
+
+Compatible con 0.10.64.

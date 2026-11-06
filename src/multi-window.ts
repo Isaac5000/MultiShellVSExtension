@@ -5,7 +5,9 @@ import type {SkillOptions,SkillScopeFilter,SkillInfo} from './tools/agent-skills
 import type {ServedSkill} from './tools/skills-extension';
 import { createServer, Server as HttpServer, IncomingMessage, ServerResponse } from 'http';
 import { AddressInfo } from 'net';
-import { ShellManager, ShellDescription, ShellExecutionResult, ShellOrigin, SavedUserShell, SavedIdleProof } from './shell-manager';
+import { ShellManager, ShellDescription, ShellExecutionResult, ShellOrigin, SavedUserShell, SavedIdleProof, detectInputWaitHint } from './shell-manager';
+import {BackgroundJobManager, type BackgroundJobSnapshot} from './background-jobs';
+import {runIsolatedCommand} from './tools/isolated-command';
 import { ShellApi, ShellRequestOptions } from './shell-api';
 import { HTTP_RECEIVE_LIMITS } from './http-limits';
 import type { NativeKind, NativeArgs } from './tools/native-window-tools';
@@ -16,7 +18,7 @@ export const CONTROL_PATH = '/_multishell/control';
 const ACTION_PATH = '/_multishell/action';
 const MAX_BODY = 2_000_000;
 
-type WorkerAction = { op:'create'|'create_panel_user'|'create_user'|'list'|'execute'|'execute_isolated'|'close'|'close_user'|'close_panel_user'|'alias'|'native'|'skill_list'|'skill_read'|'skill_file'|'skill_manifest'; id?:string; cwd?:string; allow?:boolean; command?:string; timeout?:number; alias?:string; origin?:ShellOrigin; kind?:NativeKind; args?:NativeArgs; panelPermit?:string; skill_path?:string; skill_file?:string; skill_scope?:SkillScopeFilter; skill_query?:string; skill_name_only?:boolean; skill_cursor?:string; skill_limit?:number; skill_encoding?:'utf-8'|'base64'; include_global?:boolean };
+type WorkerAction = { op:'create'|'create_panel_user'|'create_user'|'list'|'execute'|'execute_isolated'|'background_start'|'background_status'|'background_list'|'background_cancel'|'close'|'close_user'|'close_panel_user'|'alias'|'native'|'skill_list'|'skill_read'|'skill_file'|'skill_manifest'; id?:string; cwd?:string; allow?:boolean; command?:string; timeout?:number; job_id?:string; max_output?:number; alias?:string; origin?:ShellOrigin; kind?:NativeKind; args?:NativeArgs; panelPermit?:string; skill_path?:string; skill_file?:string; skill_scope?:SkillScopeFilter; skill_query?:string; skill_name_only?:boolean; skill_cursor?:string; skill_limit?:number; skill_encoding?:'utf-8'|'base64'; include_global?:boolean };
 export interface Registration { window_id:string; workspace:string; worker_port:number; aliases?:Record<string,string>; machine_id?:string; }
 export interface UserShellRequest {
     request_id:string;
@@ -99,6 +101,7 @@ export class WindowWorker {
     private starting?:Promise<void>;
     private stopping?:Promise<void>;
     private readonly requests=new Set<AbortController>();
+    private readonly backgroundJobs=new BackgroundJobManager(runIsolatedCommand,detectInputWaitHint);
     private readonly pendingRequests=new Map<string,{
         details:UserShellRequest;settle:(approved:boolean)=>void;
     }>();
@@ -145,6 +148,17 @@ export class WindowWorker {
     }
     listPendingUserRequests():UserShellRequest[]{
         return [...this.pendingRequests.values()].map(x=>x.details);
+    }
+    /** Read-only local panel snapshot; no job credentials or commands. */
+    localBackgroundJobs(id:string):BackgroundJobSnapshot[]{
+        return this.backgroundJobs.list(id,5);
+    }
+    /** Only local panel clicks may invoke this without an MCP RPC request. */
+    cancelLocalBackgroundJob(id:string,jobId:string):BackgroundJobSnapshot{
+        if(!this.shells.list().some(shell=>shell.shell_id===id)){
+            throw new Error('Unknown local shell ID.');
+        }
+        return this.backgroundJobs.cancel(id,jobId);
     }
     decideUserRequest(id:string,approved:boolean):boolean{
         const request=this.pendingRequests.get(id);
@@ -254,6 +268,9 @@ export class WindowWorker {
                         }
                         if(cancel.signal.aborted){throw new Error('Terminal creation request was cancelled before opening a shell.');}
                         const origin:ShellOrigin=r.op==='create'?'mcp':'user';
+                        if(!this.shells.list().some(item=>item.shell_id===r.id)){
+                            this.backgroundJobs.revokeShell(r.id!);
+                        }
                         const created=this.shells.create(r.id!,r.cwd,r.allow,origin);
                         try{
                             if(origin==='user'){
@@ -273,14 +290,38 @@ export class WindowWorker {
                     case 'list': {
                         const live=this.shells.list();
                         const ids=new Set(live.map(s=>s.shell_id));
+                        this.backgroundJobs.revokeMissingShells(ids);
                         for(const id of this.aliases.keys()){if(!ids.has(id)){this.aliases.delete(id);}}
                         result=live;
                         break;
                     }
                     case 'execute':result=await this.shells.execute(r.id!,r.command!,r.timeout,cancel.signal);break;
                     case 'execute_isolated': {
-                        const {runIsolatedCommand}=require('./tools/isolated-command') as typeof import('./tools/isolated-command');
                         result=await runIsolatedCommand(r.id!,this.shells.root(r.id!),r.command!,r.timeout,cancel.signal);
+                        break;
+                    }
+                    case 'background_start': {
+                        const local=this.shells.list().find(shell=>shell.shell_id===r.id);
+                        if(!local){throw new Error('Unknown local shell ID.');}
+                        if(cancel.signal.aborted){throw new Error('Background start cancelled.');}
+                        result=this.backgroundJobs.start(local.shell_id,this.shells.root(local.shell_id),
+                            r.command!,r.timeout,r.job_id);
+                        if(cancel.signal.aborted){
+                            this.backgroundJobs.cancel(local.shell_id,(result as BackgroundJobSnapshot).job_id);
+                            throw new Error('Background start cancelled after dispatch.');
+                        }
+                        break;
+                    }
+                    case 'background_status':
+                    case 'background_list':
+                    case 'background_cancel': {
+                        const local=this.shells.list().find(shell=>shell.shell_id===r.id);
+                        if(!local){throw new Error('Unknown local shell ID.');}
+                        result=r.op==='background_status'
+                            ?this.backgroundJobs.status(local.shell_id,r.job_id!,r.max_output)
+                            :r.op==='background_cancel'
+                                ?this.backgroundJobs.cancel(local.shell_id,r.job_id!)
+                                :this.backgroundJobs.list(local.shell_id,r.max_output);
                         break;
                     }
                     case 'close':
@@ -307,6 +348,7 @@ export class WindowWorker {
                         catch(e){
                             if(this.shells.list().some(s=>s.shell_id===r.id)){throw e;}
                         }
+                        this.backgroundJobs.revokeShell(r.id!);
                         this.aliases.delete(r.id!);
                         result={closed:r.id};
                         break;
@@ -386,6 +428,7 @@ export class WindowWorker {
     }
     private async stopListener():Promise<void>{
         await this.starting?.catch(()=>{});
+        await this.backgroundJobs.stop();
         for(const request of this.requests){request.abort();}
         this.panelPermits.clear();
         for(const request of [...this.pendingRequests.values()]){
@@ -638,6 +681,45 @@ export class WindowRouter implements ShellApi {
         if(!a){throw new Error('Unknown shell_id: '+id);}
         return this.send(a.owner,{op:'execute_isolated',id:shell,command,timeout},signal) as Promise<ShellExecutionResult>;
     }
+    async startBackground(id:string,command:string,timeout=120000,signal?:AbortSignal):Promise<BackgroundJobSnapshot>{
+        if(signal?.aborted){throw new Error('Background start cancelled before dispatch.');}
+        const shell=this.resolve(id),assignment=this.assigned.get(shell);
+        if(!assignment){throw new Error('Unknown shell_id: '+id);}
+        const connection=this.getWorker(assignment.owner);
+        const jobId=randomUUID();
+        try{
+            const status=await this.send(assignment.owner,
+                {op:'background_start',id:shell,command,timeout,job_id:jobId},signal) as BackgroundJobSnapshot;
+            this.requireConnection(connection);
+            if(signal?.aborted){throw new Error('Background start cancelled after dispatch.');}
+            return status;
+        }catch(error){
+            // If the caller disconnects after the worker started, only cancel
+            // this newly generated job, never a terminal or another process.
+            if(signal?.aborted&&this.currentConnection(connection)){
+                try{await this.send(assignment.owner,{op:'background_cancel',id:shell,job_id:jobId});}catch{}
+            }
+            throw error;
+        }
+    }
+    private async backgroundAction(id:string,op:'background_status'|'background_list'|'background_cancel',
+        jobId?:string,maxOutput?:number):Promise<any>{
+        const shell=this.resolve(id),assignment=this.assigned.get(shell);
+        if(!assignment){throw new Error('Unknown shell_id: '+id);}
+        const connection=this.getWorker(assignment.owner);
+        const result=await this.send(assignment.owner,{op,id:shell,job_id:jobId,max_output:maxOutput});
+        this.requireConnection(connection);
+        return result;
+    }
+    backgroundStatus(id:string,jobId:string,maxChars=4096):Promise<BackgroundJobSnapshot>{
+        return this.backgroundAction(id,'background_status',jobId,maxChars);
+    }
+    listBackgroundJobs(id:string,max=20):Promise<BackgroundJobSnapshot[]>{
+        return this.backgroundAction(id,'background_list',undefined,max);
+    }
+    cancelBackground(id:string,jobId:string):Promise<BackgroundJobSnapshot>{
+        return this.backgroundAction(id,'background_cancel',jobId);
+    }
     async skillList(id:string,scope:SkillScopeFilter='all',includeGlobal=false,options:SkillOptions={}):Promise<{skills:SkillInfo[];warnings:string[];next_cursor?:string}>{
         const shell=this.resolve(id);
         const owner=this.assigned.get(shell)!.owner;
@@ -856,8 +938,8 @@ export class MultiWindowController {
         private readonly primaryAlias?:string,
         private readonly preferredPrimaryId?:string,
         private readonly savedUserShells:readonly SavedUserShell[] = [],
-        private readonly onAliasChanged:((id:string,alias:string)=>Promise<void>) | undefined = undefined,
-        private readonly onUserShellCreated:((shell:ShellDescription)=>Promise<void>) | undefined = undefined,
+        onAliasChanged:((id:string,alias:string)=>Promise<void>) | undefined = undefined,
+        onUserShellCreated:((shell:ShellDescription)=>Promise<void>) | undefined = undefined,
         windowAutoExit=true,
         shellInteractiveOverrides:Record<string,boolean>={},
         savedIdleProofs:Record<string,SavedIdleProof>={},
@@ -1027,7 +1109,7 @@ export class MultiWindowController {
     }
     public async panelState():Promise<{
         role:'hub'|'worker';windowId:string;workspace:string;primary:string;
-        shells:ShellDescription[];
+        shells:Array<ShellDescription&{background_jobs:BackgroundJobSnapshot[]}>;
         windowAutoExit:boolean;
         requests:UserShellRequest[];
         windows:Array<{window_id:string;workspace:string;online:boolean}>;
@@ -1044,7 +1126,8 @@ export class MultiWindowController {
         }
         return {role:this.role,windowId:this.worker.id,workspace:this.worker.workspace,
             primary:this.primaryShellId,
-            shells:this.localShells.list().map(s=>({...s,alias:this.worker.aliases.get(s.shell_id)})),
+            shells:this.localShells.list().map(s=>({...s,alias:this.worker.aliases.get(s.shell_id),
+                background_jobs:this.worker.localBackgroundJobs(s.shell_id)})),
             requests:this.worker.listPendingUserRequests(),
             windowAutoExit:this.localShells.windowAutoExit??true,windows};
     }
@@ -1057,6 +1140,9 @@ export class MultiWindowController {
     }
     panelSetShellAutoExit(id:string,value:boolean|undefined):void{
         this.localShells.setShellInteractiveAutoExit(id,value);
+    }
+    public panelCancelBackgroundJob(shellId:string,jobId:string):BackgroundJobSnapshot{
+        return this.worker.cancelLocalBackgroundJob(shellId,jobId);
     }
     panelGetShellOverrides():Record<string,boolean>{
         return this.localShells.getInteractiveOverrides();

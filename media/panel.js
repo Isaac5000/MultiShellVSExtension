@@ -41,6 +41,10 @@
     originMcp: 'MCP',
     originAutomatic: 'Automática',
     timedOutRunning: 'Tiempo agotado · proceso conservado',
+    backgroundRunning: 'Procesos aislados activos',
+    backgroundCancelling: 'Cancelando proceso aislado',
+    backgroundCancel: 'Cancelar proceso aislado',
+    backgroundFailed: 'Último trabajo aislado falló',
     recoveredShell: 'Recuperada · verificando disponibilidad',
     restoredUnverified: 'Restaurada · verificación automática pendiente',
     ambiguousCompletion: 'Finalización no confirmada · verificación automática',
@@ -335,6 +339,10 @@
     originMcp: 'MCP',
     originAutomatic: 'Automatic',
     timedOutRunning: 'Timed out · process preserved',
+    backgroundRunning: 'Background processes active',
+    backgroundCancelling: 'Cancelling isolated process',
+    backgroundCancel: 'Cancel isolated process',
+    backgroundFailed: 'Last isolated job failed',
     recoveredShell: 'Restored · checking availability',
     restoredUnverified: 'Restored · automatic verification pending',
     ambiguousCompletion: 'Completion unverified · checking automatically',
@@ -1298,6 +1306,22 @@
       }
       if (shell.queued > 0)
         {status.textContent += ' · ' + t('queued') + ': ' + shell.queued;}
+      const bgJobs = Array.isArray(shell.background_jobs) ? shell.background_jobs : [];
+      const liveJobs = bgJobs.filter(j => j.status === 'running' || j.status === 'cancelling');
+      if (liveJobs.length) {
+        const active = liveJobs[0];
+        const commandLabel = /^[a-z0-9_-]{1,32}$/i.test(active.command_label || '')
+          ? active.command_label : 'isolated';
+        status.textContent += ' · ' + t(active.status === 'cancelling' ? 'backgroundCancelling' : 'backgroundRunning')+
+          ': ' + liveJobs.length + ' · ' + commandLabel + ' (' + Math.floor(active.elapsed_ms/1000) + ' s)';
+        const hint = active.input_hint === 'pager' ? 'possiblePager'
+          : active.input_hint === 'confirmation' ? 'possibleConfirmation'
+          : active.input_hint === 'credentials' ? 'possibleCredentials'
+          : active.input_hint === 'continuation' ? 'possibleContinuation' : null;
+        if (hint) {status.textContent += ' · ' + t(hint);}
+      } else if (bgJobs[0]?.status === 'failed') {
+        status.textContent += ' · ' + t('backgroundFailed');
+      }
       details.append(nameLine, aliasLine, idLine, status);
       open.append(leading, details);
       open.addEventListener('click', () =>
@@ -1310,6 +1334,10 @@
         )
       );
       actions.append(commandButton('message', t('copyInstruction'), () => copyInstruction(shell)));
+      if (liveJobs.length) {
+        actions.append(commandButton('x', t('backgroundCancel'), () =>
+          send('cancel_background', { id: shell.shell_id, jobId: liveJobs[0].job_id }), true));
+      }
       if((shell.recovery_required || shell.timed_out_running)){
         const restore=commandButton('shield-check',t('enableRestored'),()=>send('confirm_restore',{id:shell.shell_id}));
         actions.append(restore);

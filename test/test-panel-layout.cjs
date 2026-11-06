@@ -4,7 +4,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,"..");
-const html=fs.readFileSync(path.join(root,'src/panel.ts'),'utf8');
+const html=fs.readFileSync(path.join(root,'src/panel.ts'),'utf8')+
+  fs.readFileSync(path.join(root,'src/panel-markup.ts'),'utf8');
 const css=fs.readFileSync(path.join(root,'media/panel.css'),'utf8');
 const js=fs.readFileSync(path.join(root,'media/panel.js'),'utf8');
 const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));

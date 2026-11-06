@@ -2,7 +2,7 @@
 
 [English](../en/compatibility.md) · [Índice](../../README.md)
 
-MultiShell MCP 0.10.52 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
+MultiShell MCP 0.10.57 mantiene una capa de compatibilidad para conectores antiguos que no exponen `shell_id` como parámetro. **Incluso con esa capa, toda operación debe seleccionar una terminal**: no existe una terminal activa global y la extensión no puede identificar por sí misma la conversación de ChatGPT que envía la llamada.
 
 Para obtener los nombres de las skills del proyecto y de Codex, usa `list_skill_names_code(shell_id="fallouttraduccion",scope="all")`. Si el conector de ChatGPT todavía no conoce esta herramienta, ejecuta la consulta de control `execute_shell_command_code(command="skills fallouttraduccion",cwd="@mcp")`. No envía órdenes a PowerShell. Para incluir las skills globales, activa `multi-shell-mcp.globalCodexSkills` previa autorización; está desactivado por defecto por seguridad. [Guía completa](skills.md).
 
@@ -86,3 +86,17 @@ Consulta [Instalación](instalacion.md) para actualizar y [Validación](validaci
 `create_user_shell_code` incorpora una solicitud a la bandeja **Solicitudes** de la ventana propietaria, no una autorización directa. Solo el panel puede aceptar o rechazarla. La herramienta pública MCP y el endpoint de control no ofrecen ninguna operación para aprobar solicitudes. Las solicitudes caducadas o desconectadas no crean terminales.
 
 La opción global `multi-shell-mcp.interactiveAutoExit` tiene valor predeterminado `true`. El panel permite una preferencia por ventana y otra específica por terminal. La salida automática solo intenta `q` para programas interactivos reconocidos y comandos simples; nunca garantiza la detección universal de entrada interactiva.
+
+Edición compatible con 0.10.58.
+
+Compatible con 0.10.59.
+
+Documentación compatible con 0.10.69.
+
+Compatible con 0.10.61.
+
+Documentación compatible con 0.10.62.
+
+Documentación compatible con 0.10.63.
+
+Compatible con 0.10.64.

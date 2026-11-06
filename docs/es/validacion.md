@@ -1,5 +1,67 @@
 # Pruebas, validación y diagnóstico
 
+## Agente persistente y memoria SQLite (0.10.57)
+
+- Pruebas específicas para almacenamiento SQLite, aislamiento de la memoria por objetivo, recuperación de contexto, búsquedas FTS5, checkpoints, propiedad de sesión, bloqueo entre procesos, importación de archivos y CLI.
+- Validar cada paso con una IA ficticia, sin accesos a shells MCP ni llamadas de pago.
+- Los fallos del controlador deben dejar el objetivo pausado o bloqueado. El reinicio no puede reanudar un trabajo sin autorización.
+- El agente requiere **Node.js 24+ externo**; la extensión VS Code conserva sus requisitos de ejecución habituales.
+
+## Continuación automática simulada y persistencia (0.10.56)
+
+- Pruebas de motor, etapa ficticia, cierre y reapertura, traspaso de contexto, autorización explícita, presupuestos, idempotencia, identidad del chat y checkpoints manipulados.
+- El almacenamiento local valida la estructura del objetivo, detecta modificaciones accidentales de sus parámetros y **nunca restaura una ejecución automáticamente**.
+- Las conversaciones nuevas son **simuladas**, sin llamadas a Codex ni a ningún proveedor de IA; los permisos y controles MCP siguen sin ampliarse.
+La persistencia entre chats se comprueba con test/test-chat-handoff-http.cjs y test/test-chat-handoff-store.cjs. No existe simulador de chats automaticos.
+
+## Optimizaciones del panel y del protocolo (0.10.55)
+
+- Pruebas superadas: `test-bounded-map`, `test-ai-provider-status-parallel`, `test-panel-config-status-parallel`, `test-panel-hidden-refresh` y `test-mcp-compact-responses`.
+- Las comprobaciones independientes se limitan a seis perfiles simultáneos; conservan el orden y no almacenan secretos.
+- El panel oculto deja de consultar periódicamente ventanas, archivos y SecretStorage, pero se actualiza al mostrarse.
+- Las herramientas MCP de terminales, archivos y VS Code nativo devuelven JSON compacto sin alterar los datos.
+- **144/144 suites automatizadas superadas en cinco tandas**, con compilación, bundle, ESLint y TypeScript estricto correctos.
+- Pruebas gráficas reales pendientes: el instalador de VS Code sigue activo; no se ha forzado su cierre.
+
+## Cachés e índice de Agent Skills (0.10.54)
+
+- Pruebas de invalidación al editar, crear y eliminar skills y referencias; integridad SHA-256, límites de rutas, aislamiento de objetos, JSON compacto y transferencia UTF-8/Base64.
+- Referencia sintética Windows, 180 skills/360 archivos, nueve páginas: ~6,99 s antes, ~0,87 s con caché caliente y ~1,28 s en la primera ejecución.
+- No se omiten comprobaciones de acceso, symlinks o rutas; MCP Skills conserva `ttlMs: 0` para los clientes.
+## Trabajos aislados asíncronos (0.10.53)
+
+- Pruebas de gestor, MCP real en puertos de prueba, recuperación tras un nuevo coordinador, procesos paralelos con una terminal ocupada, permisos por IA, panel y revocación por cierre de terminal.
+- La ejecución da un `job_id` y la consulta de estado permite leer salida parcial y resultado, sin repetir comandos. La cancelación solo afecta a los hijos aislados de MultiShell.
+- **133/133 suites automatizadas correctas** en cinco tandas. Se han verificado la compilación, TypeScript estricto y ESLint. Las pruebas gráficas reales siguen pendientes cuando el actualizador de VS Code bloquea el host aislado.
+- Límites de protección: 12 trabajos simultáneos, 96 registros, retención de 30 minutos, salida reciente de 16 KiB. No persisten al reiniciar la ventana propietaria.
+
+
+
+## PowerShell 7 instalado y pruebas reales de VS Code (04/11/2026)
+
+- **Entorno:** PowerShell 7.6.9 funciona en Windows. `pwsh.exe` se resuelve mediante un alias de WindowsApps que Node no reconoce con `fs.existsSync()`. Se corrigieron los lanzadores `test:vscode` y `test:windows` para validar el ejecutable mediante `pwsh --version`, con regresión `test-test-shell-resolver.cjs`.
+- **Regresión completa:** **126/126 suites aprobadas** en cinco tandas, agregadas sin duplicados por `scripts/aggregate-test-reports.cjs`. ESLint, compilación, bundle y `git diff --check` correctos.
+- **Pruebas gráficas reales:** se inició `test:vscode` con un perfil aislado, pero VS Code impidió abrirlo con `Code is currently being updated`; el instalador `CodeSetup-stable-...` seguía activo y la prueba agotó 180 segundos sin arrancar el host. No se detuvo el instalador ni ningún VS Code del usuario.
+- **Pendiente:** finalizar la actualización de VS Code y repetir `npm run test:vscode` y `npm run test:windows`. No se han validado todavía la ventana adicional, los terminales integrados reales ni el failover de dos ventanas.
+
+## Endurecimiento de pruebas y pasarelas (04/11/2026, sin publicar)
+
+- **Pasarelas IA:** `stopOne()` conserva el servidor registrado hasta que `stop()` termina correctamente. Se ha probado el error de cierre y el reintento; un cierre fallido impide continuar con la rotación de credenciales.
+- **VS Code real:** los bancos `test:vscode` y `test:windows` se han adaptado a la autenticación local obligatoria desde 0.10.51. Usan un archivo de token en un perfil aislado y no incorporan claves a registros. Las 80 operaciones de conexión se ejecutan por oleadas de 20.
+- **CI:** `.github/workflows/ci.yml` prepara compilación, ESLint, cinco tandas de regresión y empaquetado en Windows, Ubuntu y macOS con informes JSON. El resultado real en GitHub Actions se conocerá cuando se publique el código.
+- **Ejecución por tandas:** `npm run bundle` seguido de `npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json` (repetir con 2–5). `node scripts/aggregate-test-reports.cjs .vscode-test/test-results` detecta fallos, pruebas duplicadas y tandas incompletas.
+- **Panel:** el test comprueba identificadores, CSP, nonce y recursos locales sin exigir un SHA-256 fijo que bloquearía cambios legítimos.
+- **Verificación actual:** **125/125 suites correctas** en cinco tandas de 25; compilación, bundling, ESLint y TypeScript estricto correctos. Los informes locales están en `.vscode-test/test-results`.
+- **Pendiente:** las pruebas gráficas requieren PowerShell 7 (`pwsh`), no disponible en el entorno observado. También queda por comprobar el resultado de CI en Linux/macOS, la conexión real de los clientes IA y el arranque sin ventana de Windows Terminal.
+
+## Refactorización no publicada sobre el código 0.10.52 (04/11/2026)
+
+- Se extrajo el HTML estático del panel a `src/panel-markup.ts` y se verificó inicialmente la equivalencia byte por byte. La regresión actual comprueba identificadores, CSP, nonce y recursos sin fijar un hash permanente.
+- El registro de los ocho comandos del túnel se separó del procedimiento `activate()` mediante `registerTunnelCommands`, sin cambiar el orden ni los manejadores.
+- Se eliminaron una importación sin uso y dos propiedades redundantes del coordinador; se conservaron los parámetros de compatibilidad de las interfaces existentes y se simplificó la ocultación de ventanas a clientes IA restringidos.
+- **119 de 119 suites automatizadas superadas** en cinco tandas (24 + 24 + 24 + 24 + 23). Compilación, bundling, ESLint y TypeScript con `noUnusedLocals`/`noUnusedParameters` también correctos.
+- Sin nuevo número de versión ni VSIX publicado. Las pruebas reales de interfaz, reconexión remota y ausencia de Windows Terminal en el equipo siguen requiriendo instalación y verificación manual.
+
 **Resultado 0.10.51:** 116/116 suites automatizadas superadas en cinco tandas (24 + 23 + 23 + 23 + 23); compilación TypeScript, empaquetado VSIX/plugin, ESLint y `git diff --check` correctos. Auditoría npm de dependencias de producción: 0 vulnerabilidades notificadas. Pendientes las pruebas manuales de reinicio de VS Code, ventana de Windows Terminal y conexión ChatGPT mediante un túnel real tras instalar el VSIX.
 
 
@@ -396,3 +458,17 @@ Las pruebas con VS Code real se distinguen de esta prueba de API con terminales 
 - Las pruebas `test-global-skills-mcp.cjs` contemplan la denegación de herramientas no registradas mediante errores JSON-RPC de SDK v2. El aislamiento de ventanas y las autorizaciones locales siguen operativos.
 
 **Pendiente de aceptación:** prueba completa de uso desde el túnel real y verificación manual tras instalar el VSIX en VS Code. Una suite automatizada no sustituye a esa aceptación.
+
+Edición compatible con 0.10.58.
+
+Compatible con 0.10.59.
+
+Documentación compatible con 0.10.69.
+
+Compatible con 0.10.61.
+
+Documentación compatible con 0.10.62.
+
+Documentación compatible con 0.10.63.
+
+Compatible con 0.10.64.

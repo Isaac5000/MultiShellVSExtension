@@ -4,7 +4,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const js=fs.readFileSync(path.join(__dirname,'../media/panel.js'),'utf8');
-const html=fs.readFileSync(path.join(__dirname,'../src/panel.ts'),'utf8');
+const html=fs.readFileSync(path.join(__dirname,'../src/panel.ts'),'utf8')+
+  fs.readFileSync(path.join(__dirname,'../src/panel-markup.ts'),'utf8');
 const start=js.indexOf('  const pages = [');
 const end=js.indexOf('  function setForm(open) {',start);
 assert.ok(start>=0&&end>start,'Missing side navigation');

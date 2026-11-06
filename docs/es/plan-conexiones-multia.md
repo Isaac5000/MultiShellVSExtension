@@ -2,7 +2,7 @@
 
 > **Estado:** navegación y clientes locales completados en 0.10.43–0.10.47; desde 0.10.48 existen pasarelas **locales autenticadas por perfil**, claves individuales, permisos por terminal y revocación. **Pendientes**: túnel HTTPS remoto, registro/autenticación propia de cada proveedor y pruebas reales. Propuesta inicial del 3 de noviembre de 2026; fase de seguridad iniciada por petición del usuario el 4 de noviembre.
 > **Prioridad previa:** evitar que la consola de PowerShell aparezca automáticamente al iniciar VS Code. Mantener sin interrupciones el túnel y las terminales actuales.
-> **Versión de referencia:** MultiShell MCP Server 0.10.52.
+> **Versión de referencia:** MultiShell MCP Server 0.10.57.
 
 ## Proveedores y superficies comprobadas en 0.10.46
 
@@ -123,3 +123,17 @@ Cliente IA → Transporte/Adaptador → Gateway MCP autenticado
 - OAuth/identidad concretos del gateway y política final de acceso remoto.
 
 **Alcance autorizado:** el usuario pidió comenzar esta implementación el 4 de noviembre de 2026. La versión 0.10.48 entrega la primera fase de seguridad local; la publicación remota y la integración con cuentas externas no se presumen completadas.
+
+Edición compatible con 0.10.58.
+
+Compatible con 0.10.59.
+
+Documentación compatible con 0.10.69.
+
+Compatible con 0.10.61.
+
+Documentación compatible con 0.10.62.
+
+Documentación compatible con 0.10.63.
+
+Compatible con 0.10.64.

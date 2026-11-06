@@ -512,7 +512,7 @@ export class ShellManager implements vscode.Disposable {
      * Never infer ownership from a terminal name and working directory alone:
      * that would promote temporary MCP terminals into persistent USER shells.
      */
-    restoreUserTerminals(workspace:string,saved:readonly SavedUserShell[]=[]):ShellDescription[] {
+    restoreUserTerminals(_workspace:string,saved:readonly SavedUserShell[]=[]):ShellDescription[] {
         if(this.disposed){return [];}
         const seen=new Map<string,SavedUserShell>();
         for(const item of saved){

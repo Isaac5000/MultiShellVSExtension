@@ -4,7 +4,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 
-const source=fs.readFileSync(path.join(__dirname,'../src/panel.ts'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../src/panel.ts'),'utf8')+
+  fs.readFileSync(path.join(__dirname,'../src/panel-markup.ts'),'utf8');
 const script=fs.readFileSync(path.join(__dirname,'../media/panel.js'),'utf8');
 // Every direct document-ID reference in the webview must exist in the markup.
 // Previously "aiFormHelp" was referenced but not assigned an HTML id, causing

@@ -2,17 +2,18 @@
 const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),crypto=require('node:crypto');
 const {spawn,spawnSync}=require('node:child_process');
 const assert=require('node:assert/strict');
+const {resolveTestShell}=require('./test-shell-resolver.cjs');
 const root=path.resolve(__dirname,'..'),base=path.join(root,'.vscode-test','connection-windows');
 const report={started:new Date().toISOString(),version:require('../package.json').version,checks:[]};
 const profileRoot=path.join(base,'profiles-'+report.started.replace(/[^0-9]/g,''));
-let port,requestId=0,commandId=0;
+let port,requestId=0,commandId=0,token;
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const state=label=>{try{return JSON.parse(fs.readFileSync(path.join(base,label+'-state.json'),'utf8'));}catch{return{};}};
 const save=()=>fs.writeFileSync(path.join(base,'report.json'),JSON.stringify(report,null,2));
 async function until(check,ms=20000){const begin=Date.now();while(Date.now()-begin<ms){if(await check())return;await wait(100);}throw Error('Condition timed out after '+ms+'ms');}
 async function rpc(name,args={},timeout=6000){
  const response=await fetch('http://127.0.0.1:'+port+'/mcp',{method:'POST',signal:AbortSignal.timeout(timeout),
-  headers:{'content-type':'application/json',accept:'application/json,text/event-stream',connection:'close'},
+  headers:{'content-type':'application/json',accept:'application/json,text/event-stream',connection:'close','x-multishell-local-auth':token},
   body:JSON.stringify({jsonrpc:'2.0',id:++requestId,method:'tools/call',params:{name,arguments:args}})});
  const text=await response.text();assert.equal(response.status,200);
  const row=text.split(/\r?\n/).find(line=>line.startsWith('data:'));const data=JSON.parse(row?row.slice(5):text);
@@ -32,10 +33,10 @@ function forceCloseOwnedProfiles(){
 async function main(){
  if(process.platform!=='win32')throw Error('This multi-window fault harness currently targets Windows.');
  const code=process.env.VSCODE_EXECUTABLE||path.join(process.env.LOCALAPPDATA,'Programs/Microsoft VS Code/Code.exe');
- const shell=process.env.MULTISHELL_TEST_SHELL||spawnSync('where.exe',['pwsh.exe'],{encoding:'utf8',windowsHide:true}).stdout?.trim().split(/\r?\n/)[0];
- if(!shell||!fs.existsSync(shell)||!fs.existsSync(code))throw Error('VS Code and PowerShell 7 are required');
+ const shell=resolveTestShell();
+ if(!fs.existsSync(code))throw Error('VS Code is required');
  const listener=net.createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
- fs.mkdirSync(base,{recursive:true});const token=crypto.randomBytes(32).toString('hex');
+ fs.mkdirSync(base,{recursive:true});token=crypto.randomBytes(32).toString('hex');
  const observer=path.join(base,'observer');fs.mkdirSync(observer,{recursive:true});
  fs.writeFileSync(path.join(observer,'package.json'),JSON.stringify({name:'connection-test-observer',
   displayName:'MultiShell Connection Test Observer',description:'Isolated connection and reload test observer',
@@ -73,7 +74,7 @@ async function main(){
   const child=spawn(code,['--user-data-dir',profile,'--extensions-dir',path.join(base,'extensions'),'--extensionDevelopmentPath',root,
    '--disable-workspace-trust',
    '--skip-welcome','--skip-release-notes','--new-window',workspace],{windowsHide:true,stdio:['ignore',stdout,stderr],
-    env:{...process.env,MULTISHELL_CONNECTION_ROOT:base,MULTISHELL_CONNECTION_WINDOW:label,MULTISHELL_TEST_PORT:String(port)}});
+    env:{...process.env,MULTISHELL_CONNECTION_ROOT:base,MULTISHELL_CONNECTION_WINDOW:label,MULTISHELL_TEST_PORT:String(port),MULTISHELL_TEST_TOKEN_FILE:path.join(profile,'User/globalStorage/local-multishell.multi-shell-mcp-server/multishell-local-token')}});
   child.once('error',error=>{report.launchError=error.message;save();});fs.closeSync(stdout);fs.closeSync(stderr);
  }
  try{
@@ -85,10 +86,14 @@ async function main(){
   });
   for(const label of ['A','B'])await rpc('create_shell_code',{shell_id:'link_'+label,cwd:path.join(base,'workspace-'+label,'jobs'),window_id:state(label).windowId});
   await check('eighty_real_commands_across_two_windows',async()=>{
-   const jobs=[];for(let i=0;i<80;i++)jobs.push(execute('link_'+(i%2?'B':'A'),"Write-Output 'WINDOW_JOB_"+i+"'",20000).then(value=>{
-    assert.equal(value.exit_code,0);assert.ok(value.output.includes('WINDOW_JOB_'+i));
-   }));
-   await Promise.all(jobs);return {commands:80};
+   // Preserve all 80 commands, but honor the 32-in-flight HTTP ceiling.
+   for(let start=0;start<80;start+=20){
+    const jobs=[];for(let i=start;i<start+20;i++)jobs.push(execute('link_'+(i%2?'B':'A'),"Write-Output 'WINDOW_JOB_"+i+"'",20000).then(value=>{
+     assert.equal(value.exit_code,0);assert.ok(value.output.includes('WINDOW_JOB_'+i));
+    }));
+    await Promise.all(jobs);
+   }
+   return {commands:80};
   });
   await check('coordinator_loss_preserves_other_window_work_without_replay',async()=>{
    const marker=path.join(base,'workspace-B/jobs/failover-marker.txt');if(fs.existsSync(marker))fs.unlinkSync(marker);

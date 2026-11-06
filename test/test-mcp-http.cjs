@@ -64,12 +64,33 @@ async function main(){
    const names=tools.result.tools.map(t=>t.name);
    assert.ok(names.includes('create_shell_code')&&names.includes('execute_shell_command_code'));
    assert.ok(names.includes('execute_isolated_command_code'),'Noninteractive isolated execution must be exposed');
-   assert.equal(names.length,25,'Expected seven shell, eight scoped file, four native VSCode and six Agent Skills tools');
+   assert.equal(names.length,32,'Expected core tools plus three ChatGPT handoff tools');
+   for(const name of ['chat_handoff_save_code','chat_handoff_load_code','chat_handoff_list_code']){
+     assert.ok(names.includes(name),'Missing chat-handoff tool: '+name);
+   }
+   for(const name of ['start_background_command_code','get_background_command_code',
+    'list_background_commands_code','cancel_background_command_code']){
+      assert.ok(names.includes(name),'Missing safe background command tool: '+name);
+   }
    assert.ok(names.includes('list_skill_names_code'),'Quick skill name listing must be exposed');
    for(const name of ['list_skills_code','read_skill_code','read_skill_file_code']){
      assert.ok(names.includes(name),'Required Agent Skills tool missing: '+name);
    }
    assert.ok(names.includes('create_user_shell_code'),'Persistent user terminal creation must require a separate approval tool');
+   // Standard MCP safety hints help clients avoid treating local read-only
+   // operations as destructive while still flagging checkpoint mutations.
+   const toolByName=name=>tools.result.tools.find(t=>t.name===name);
+   for(const name of ['chat_handoff_list_code','chat_handoff_load_code','read_file_code','list_files_code']){
+     const hints=toolByName(name).annotations;
+     assert.equal(hints?.readOnlyHint,true,name+' must advertise read-only semantics');
+     assert.equal(hints?.destructiveHint,false,name+' must not claim destructive side effects');
+     assert.equal(hints?.openWorldHint,false,name+' is confined to an existing local workspace');
+   }
+   const saveHints=toolByName('chat_handoff_save_code').annotations;
+   assert.equal(saveHints?.readOnlyHint,false,'Checkpoint saves mutate local state');
+   assert.equal(saveHints?.destructiveHint,true,'Checkpoint saves can replace old state');
+   assert.equal(saveHints?.idempotentHint,false,'New saves create new IDs');
+
    const call=async(name,args)=> {
       const r=await rpc('tools/call',{name,arguments:args});
       assert.ok(r.result?.content,'tool result missing '+name);

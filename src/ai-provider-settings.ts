@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import {onboardingGuide,OnboardingFieldId} from './ai-provider-onboarding';
 import {listLocalConnections} from './ai-connections';
+import {mapConcurrent} from './bounded-map';
 
 const SAVE_KEY='multiShellAiProviderFormV1';
 const SECRET_PREFIX='multiShellAiProviderCredentialV1:';
@@ -66,22 +67,23 @@ function validateValue(field:OnboardingFieldId,value:string):string{
 export async function readProviderStatuses(host:Store):Promise<Record<string,AiProviderStoredStatus>>{
   const form=saved(host);
   const profiles=listLocalConnections(host.globalState);
-  const result:Record<string,AiProviderStoredStatus>={};
-  for(const profile of profiles){
+  // SecretStorage performs independent I/O per profile. Cap concurrency to
+  // six profiles (up to 12 secret lookups), without caching secret values.
+  const statuses=await mapConcurrent(profiles,6,async profile=>{
     const secrets=host.secrets;
     const [api,bearer]=secrets?await Promise.all([
       secrets.get(SECRET_PREFIX+profile.id+':providerApiKey'),
       secrets.get(SECRET_PREFIX+profile.id+':mcpBearer')
     ]):[undefined,undefined];
-    result[profile.id]={
+    return {
       profileId:profile.id,
       publicMcpUrl:form[profile.id]?.publicMcpUrl,
       connectorId:form[profile.id]?.connectorId,
       hasProviderApiKey:typeof api==='string'&&api.length>0,
       hasMcpBearer:typeof bearer==='string'&&bearer.length>0
     };
-  }
-  return result;
+  });
+  return Object.fromEntries(statuses.map(status=>[status.profileId,status]));
 }
 /** Credentials arrive from a trusted VS Code Webview only when the user
  * submits a field; the host independently validates the field/provider.

@@ -1,4 +1,5 @@
 import { ShellDescription, ShellExecutionResult, ShellOrigin } from './shell-manager';
+import type {BackgroundJobSnapshot} from './background-jobs';
 import type { NativeKind, NativeArgs } from './tools/native-window-tools';
 import type {SkillOptions,SkillScopeFilter,SkillInfo} from './tools/agent-skills';
 import type {ServedSkill} from './tools/skills-extension';
@@ -19,6 +20,11 @@ export interface ShellApi {
     skillManifest?(id:string,skillPath:string,options:SkillOptions):Promise<ServedSkill>;
     execute(id: string, command: string, timeoutMs?: number, signal?: AbortSignal): Promise<ShellExecutionResult>;
     executeIsolated?(id: string, command: string, timeoutMs?: number, signal?: AbortSignal): Promise<ShellExecutionResult>;
+    /** Non-interactive jobs live in the owning VS Code worker, not a request transport. */
+    startBackground?(id:string,command:string,timeoutMs?:number,signal?:AbortSignal):Promise<BackgroundJobSnapshot>;
+    backgroundStatus?(id:string,jobId:string,maxChars?:number):Promise<BackgroundJobSnapshot>;
+    listBackgroundJobs?(id:string,max?:number):Promise<BackgroundJobSnapshot[]>;
+    cancelBackground?(id:string,jobId:string):Promise<BackgroundJobSnapshot>;
     windows?(): Array<{window_id:string; workspace:string; online:boolean; machine_id?:string}>;
     setAlias?(id: string, alias: string, options?:ShellRequestOptions): Promise<{shell_id:string;alias:string}>;
     native?(id:string,kind:NativeKind,args:NativeArgs):Promise<unknown>;

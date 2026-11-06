@@ -406,25 +406,8 @@ async function pickAvailableSkills():Promise<void>{
         return;
     }
 }
-export async function activate(context:vscode.ExtensionContext):Promise<void>{
-    extensionContext=context;
-    deactivating=false;
-    idleProofRevision=0;
-    idleProofWrites=Promise.resolve();
-    if(idleProofTicker){clearInterval(idleProofTicker);}
-    idleProofTicker=undefined;
-    context.subscriptions.push(vscode.commands.registerCommand(
-        'multi-shell-mcp.listSkills',pickAvailableSkills));
-    aiGatewayManager=new AiGatewayManager(context,
-        ()=>controller&&roleInfo.startsWith('hub')?controller.router:undefined,
-        ()=>vscode.workspace.isTrusted!==false&&Boolean(controller)&&roleInfo.startsWith('hub'),
-        ()=>activeTools||config().tools,
-        ()=>vscode.workspace.isTrusted!==false);
-    tunnelManager=new TunnelManager(context,
-        ()=>controller?.listeningPort,
-        async()=>vscode.workspace.isTrusted!==false&&Boolean(controller)&&roleInfo.startsWith('hub'),
-        message=>logger.info(message),
-        ()=>getSecret(context.globalStorageUri.fsPath));
+/** Register tunnel UI commands after the manager has been initialized. */
+function registerTunnelCommands(context:vscode.ExtensionContext):void{
     context.subscriptions.push(vscode.commands.registerCommand('multi-shell-mcp.tunnelInstall',async()=>{
         try{
             await vscode.window.withProgress({
@@ -548,6 +531,29 @@ export async function activate(context:vscode.ExtensionContext):Promise<void>{
             vscode.window.showInformationMessage('MultiShell tunnel autostart: '+(next?'ON':'OFF'));
         }catch(e){vscode.window.showErrorMessage('MultiShell tunnel autostart: '+String(e));}
     }));
+
+}
+
+export async function activate(context:vscode.ExtensionContext):Promise<void>{
+    extensionContext=context;
+    deactivating=false;
+    idleProofRevision=0;
+    idleProofWrites=Promise.resolve();
+    if(idleProofTicker){clearInterval(idleProofTicker);}
+    idleProofTicker=undefined;
+    context.subscriptions.push(vscode.commands.registerCommand(
+        'multi-shell-mcp.listSkills',pickAvailableSkills));
+    aiGatewayManager=new AiGatewayManager(context,
+        ()=>controller&&roleInfo.startsWith('hub')?controller.router:undefined,
+        ()=>vscode.workspace.isTrusted!==false&&Boolean(controller)&&roleInfo.startsWith('hub'),
+        ()=>activeTools||config().tools,
+        ()=>vscode.workspace.isTrusted!==false);
+    tunnelManager=new TunnelManager(context,
+        ()=>controller?.listeningPort,
+        async()=>vscode.workspace.isTrusted!==false&&Boolean(controller)&&roleInfo.startsWith('hub'),
+        message=>logger.info(message),
+        ()=>getSecret(context.globalStorageUri.fsPath));
+    registerTunnelCommands(context);
 
     statusBar=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right,95);
     statusBar.command='multi-shell-mcp.toggleServer';

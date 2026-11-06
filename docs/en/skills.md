@@ -2,8 +2,15 @@
 
 [Español](../es/skills.md) · [Project index](../../README.md)
 
-**MultiShell MCP Server 0.10.52** supports workspace Agent Skills: `SKILL.md` directories with YAML `name` and `description` metadata.
+**MultiShell MCP Server 0.10.69** supports workspace Agent Skills: `SKILL.md` directories with YAML `name` and `description` metadata.
 
+## Faster skill discovery (0.10.54)
+
+Directory indexes reuse metadata and SHA-256 hashes only while file identity and timestamps match. Added, changed and deleted skills are detected on each request without an external cache TTL. Window/AI permissions, path containment, symlink checks and read limits remain enforced.
+
+Skill tool responses use compact JSON. MCP `resources/read` transfers text directly as UTF-8 and keeps Base64 for binary resources. Cache bounds: 4096 paths, 2048 metadata entries/8 MiB and 8192 digests.
+
+In a local synthetic Windows fixture of 180 skills and 360 files, nine native pages improved from ~6.99 s to ~0.87 s warm (~1.28 s cold). These figures are not cross-platform guarantees.
 ## Where to place skills
 
 The **MultiShell MCP → Skills** sidebar tab browses the project owned by that window. **The path is always visible directly beneath the skill name** (long paths are visually truncated, with the full path available on hover). The copy icon sits to the right of the name. Only the **description** starts collapsed: select “Description” to expand it. Expanded details remain open while more results load and reset when the window or workspace changes. Search names or descriptions, select workspace or personal scope, and use **Show more skills** to continue (40 per page). **Copy for ChatGPT** copies an instruction containing `load_skill_code`, the exact path and the primary terminal's full identifier: paste it into a chat connected to MultiShell MCP. Duplicate names retain their paths so that you can select them explicitly.
@@ -65,7 +72,7 @@ Legacy MCP clients retain `list_skills_code`, `read_skill_code`, and `read_skill
 
 The portable plugin lives at `plugins/multishell-mcp/`, with `plugin.json`, `mcp.json`, and `setup` and `multishell-mcp` skills. Its repo-local marketplace is `.agents/plugins/marketplace.json` (`multishell-local`).
 
-Run `npm run package:all` to build `multi-shell-mcp-server-0.10.52.vsix` and `multi-shell-mcp-plugin-0.10.52.zip`. Install the local plugin from the repo marketplace on a supported client and approve the installation. Building does not install it automatically.
+Run `npm run package` to build one VSIX with the verified official tunnel for this OS. Run `npm run package:all` if you also want the optional plugin ZIP. On Windows x64 this produces `multi-shell-mcp-server-0.10.69-win32-x64.vsix` and (when requested) `multi-shell-mcp-plugin-0.10.69.zip`. Install the local plugin from the repo marketplace on a supported client and approve the installation. Building does not install it automatically.
 
 **Important:** the bundled `mcp.json` points to `http://127.0.0.1:3000/mcp`, which is reachable only on the same computer at the default port. Cloud-hosted ChatGPT Work needs a separately registered, secure MCP tunnel connection. Do not expose the local unauthenticated server to the public internet. The plugin packages skills but grants no additional permissions.
 
@@ -131,3 +138,8 @@ Skill text is untrusted project content and must not override user approvals or 
 Filtering happens before the response limit. Use `cursor` and `limit` for larger catalogs; continue with `next_cursor` and the same query/scope. Existing tools remain available. Each scan examines at most 4096 entries and warns when that limit is reached. Catalogs can change between pages; avoid editing the catalog while traversing it for a consistent result.
 
 New tools default to `project`. Personal skills require explicit `scope="global"` or `all` and local global-access permission, which is never enabled automatically. Loading instructions does not run them or install a native client skill. ECC plugin sources still require explicit integration; this release does not broaden their permissions.
+
+Documentation compatible with 0.10.58.
+
+
+Current installers: multi-shell-mcp-server-0.10.67.vsix y multi-shell-mcp-plugin-0.10.67.zip

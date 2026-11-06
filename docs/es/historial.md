@@ -2,6 +2,147 @@
 
 [English version](../en/changelog.md) · [Índice del proyecto](../../README.md)
 
+## 0.10.69 — Un solo VSIX obligatorio con túnel por plataforma
+
+- `npm run package` genera un único VSIX que incluye Tunnel Client oficial verificado y cloudflared para el sistema y la arquitectura seleccionados.
+- Eliminados los alias redundantes de empaquetado. `npm run package:all` crea ese mismo VSIX y, aparte, el ZIP opcional del plugin MCP.
+- Actualizados los scripts de Windows, los archivos portables, las pruebas de privacidad del VSIX y las instrucciones bilingües para utilizar solo el instalador integrado.
+- Se deja de distribuir el VSIX genérico sin túnel. Se conservan las plataformas compatibles y la recuperación segura de procesos anteriores.
+
+## 0.10.68 — Recuperación verificada del túnel entre versiones
+
+- Permite recuperar un túnel iniciado desde otra versión instalada del VSIX solo cuando siguen verificables tanto su binario oficial como la identidad del proceso registrada en el bloqueo de propiedad.
+- Rechaza PID reutilizados, huellas alteradas, extensiones ajenas y binarios anteriores manipulados o inaccesibles. Los arranques nuevos siguen eligiendo el ejecutable integrado actual.
+- Añadida una prueba regresiva que fallaba antes de la corrección; se conservan los tests, perfiles y credenciales existentes.
+- Revisadas las guías de instalación y distribución; se mantienen las cachés reutilizables de las pruebas.
+
+## 0.10.67 — Inicio automático con preferencia por el túnel integrado
+
+- El arranque manual y el automático priorizan el ejecutable nativo del VSIX verificado por SHA-256. Una copia inactiva en globalStorage ya no tiene preferencia.
+- Excepción segura: se conserva un proceso legacy activo solo si su identidad coincide con el bloqueo de propiedad del servidor. Los bloqueos antiguos o manipulados no pueden imponer su ruta.
+- Añadida prueba regresiva rojo/verde del arranque automático, PID antiguo y fallback del VSIX genérico. La compilación no cambia conexiones, claves ni perfiles existentes.
+
+## 0.10.66 — Túnel oficial integrado por plataforma
+
+- Se añade empaquetado con binarios originales del túnel y cloudflared, por sistema y arquitectura, con SHA-256 fijado y licencias.
+- El núcleo de MultiShell se mantiene en TypeScript/JavaScript, minificado para reducir el tamaño de la extensión.
+- Las instalaciones nuevas ejecutan el túnel verificado desde el VSIX; no requieren otra descarga ni duplicarlo en globalStorage.
+- Las instalaciones anteriores verificadas siguen teniendo prioridad para conservar la recuperación de procesos activos.
+- Instalador integrado opcional con npm run package:integrated; el VSIX genérico ligero sigue existiendo.
+- macOS requiere ensayos reales de Gatekeeper/notarización: no se garantiza su ejecución con el ZIP oficial sin notarizar.
+
+## 0.10.65 — Auditoría de seguridad con skills
+
+- Instalada una selección local y versionada de skills de MCP, depuración, TDD, revisión diferencial, verificación y Node.js. No ejecutan modelos independientes.
+- Cerrada una ventana de sustitución del checkpoint durante la lectura: descriptor verificado, controles de identidad y lectura acotada.
+- Limitada a 32 MiB la sustitución de líneas que reconstruye archivos enteros para evitar picos de memoria.
+- Incorporadas anotaciones MCP explícitas de lectura y efectos destructivos en las operaciones revisadas.
+- Excluido `skills-lock.json` del VSIX, conservándolo en el repositorio para trazabilidad.
+- Añadidas pruebas que fallaban antes de cada corrección. Consultar el informe de auditoría enlazado desde el README.
+- Sin reinstalaciones, cambios de túnel, publicación Git ni llamadas de API facturables.
+
+## 0.10.64 — Limpieza de funciones de continuación no implementables
+
+- Eliminados el simulador de chats y el motor independiente de continuaciones ficticias del panel y código fuente.
+- Retirados prototipos de inferencia por API o por modelos locales: no continúan los chats normales de ChatGPT y contradicen la finalidad de esta extensión.
+- Suprimidos módulos de demostración, pruebas asociadas y documentación operativa obsoleta; eliminado el empaquetado del SDK cliente independiente.
+- Permanecen las herramientas MCP reales de shells, túnel, permisos y checkpoints entre chats, con traspaso manual seguro.
+- No se eliminan los checkpoints reales ni los archivos de configuración del usuario. No se modifica el túnel.
+
+## 0.10.63 — Traspaso entre chats con selección segura de tareas
+
+- Nueva herramienta de solo lectura `chat_handoff_list_code`: presenta objetivos, estados y revisiones de los checkpoints del proyecto.
+- Si hay varias tareas pendientes, `chat_handoff_load_code` exige una selección explícita. Tampoco reanuda automáticamente tareas marcadas como completadas.
+- Los mensajes de traspaso ya no fijan una shell_id caducada: el chat nuevo debe identificar la shell actual con `list_shells_code`.
+- Un bloqueo de capacidad entre procesos impide que altas concurrentes superen la cuota de 24 checkpoints.
+- Eliminado el borrado MCP que aceptaba `human_confirmed=true` sin una autorización local real. La limpieza exige mantenimiento local explícito.
+- Sin cambios de túnel, facturación ni modelos externos; no crea conversaciones ChatGPT automáticamente.
+
+## 0.10.62 — Checkpoints MCP para traspaso entre chats ChatGPT
+
+- Nuevas herramientas `chat_handoff_save_code`, `chat_handoff_load_code` y `chat_handoff_delete_code` para guardar y recuperar progreso sin ejecutar modelos externos.
+- Persistencia local limitada a 24 registros de 16 KiB cada uno, con actualización atómica y revisión esperada que impide sobrescribir estados nuevos.
+- El checkpoint se vincula a la máquina y al directorio del proyecto; cada llamada exige la selección explícita de la shell real. Los secretos evidentes se rechazan.
+- Manual de traspaso y guías de skills bilingües con recuperación tras crear un nuevo chat en el mismo proyecto.
+- No hay creación automática de conversaciones ni activación de API facturable; el túnel existente no se modifica.
+
+## 0.10.61 — Política sin facturación adicional
+
+- La CLI de Responses API facturable queda deshabilitada. El módulo de inferencia con API key se excluye del VSIX; solo permanece lectura/reconciliación de historial heredado.
+- Nuevo `free-agent-cli.cjs`: ejecución continua simulada o inferencia `ollama-local`, exclusivamente con modelos previamente instalados en el equipo.
+- Ollama se ejecuta en un proceso separado con `OLLAMA_NO_CLOUD=1`, en un puerto local aleatorio, sin descargas automáticas de modelos ni uso de API keys.
+- Las comprobaciones externas del modelo quedan restringidas a `git diff --check`, previa autorización. Se conservan las cuotas de memoria, escritura, turnos y tiempo.
+- Las opciones basadas en suscripción quedan desactivadas hasta garantizar que no consumen créditos extra. No se ha utilizado Codex real ni generado costes de API.
+
+## 0.10.60 — Coordinador persistente de ejecución por tandas
+
+- Nuevo `continuous-runner.cjs`: encadena pausas normales `batch_limit` sin nuevas confirmaciones, dentro de un objetivo y de sus límites ya autorizados.
+- Bloqueo de coordinadores concurrentes por objetivo, heartbeat y estado persistente en SQLite, con contador de tandas y consulta `continuous-status`.
+- La CLI admite `--continuous`, `--max-batches` y `--verbose`; sigue requiriendo `--live --approve` para llamadas reales a API.
+- Pruebas de continuación, cambio de contexto, parada externa desde otro proceso y recuperación segura; no se realizaron solicitudes de pago.
+- No hay reinicio automático tras apagar el equipo ni control de chats de ChatGPT web.
+
+## 0.10.59 — Cliente MCP aislado para el agente persistente
+
+- Nuevo transporte local MCP SDK v2 empaquetado por separado; no requiere node_modules de desarrollo en un VSIX.
+- Autenticación mediante archivo de token local y conexión obligatoria a 127.0.0.1, shell_id exacta y directorio verificado.
+- Funciones del agente limitadas a listar/leer archivos, crear o reemplazar con SHA-256 y ejecutar comprobaciones predefinidas, siempre con permisos explícitos.
+- Reservas persistentes ante escrituras inciertas, límites por ejecución y objetivo y bloqueo de cambios de máquina o directorio.
+- Probada lectura de MCP real con 0.10.57 y ejecución completa de CLI con respuestas de modelo ficticias, sin cargos ni cambios en el proyecto.
+- No instala el paquete, no modifica el túnel existente ni automatiza chats web externos.
+
+## 0.10.58 — Integración opcional de API real y protección del túnel
+
+- Integrado el adaptador independiente a OpenAI Responses API con autorización por ejecución, acceso de solo lectura por defecto y límite de 12 pasos por llamada.
+- Contabilidad persistente de solicitudes y escrituras: 60 escrituras y 512 KiB por objetivo; las peticiones de resultado incierto no se reintentan automáticamente.
+- Nuevas pruebas con API simulada, recuperación por checkpoint, autorización, cierre de objetivos y cuotas. No se ha utilizado ninguna clave API real.
+- Recuperación más robusta de propiedad del túnel después de recargar VS Code, sin detener túneles ajenos o procesos con identidad no verificada.
+- El agente todavía no puede iniciar conversaciones en ChatGPT web ni usar las herramientas MCP del túnel para ejecutar sus tareas.
+
+## 0.10.57 — Agente persistente independiente con memoria SQLite
+
+- Nuevo subsistema `persistent-agent/`: almacenamiento SQLite local, historial de eventos, búsqueda textual FTS5, checkpoints e importación voluntaria de documentos.
+- Supervisor independiente del panel de VS Code con un adaptador completamente simulado: controla objetivos, tiempo, presupuestos, detención, errores, ausencia de progreso y traspasos de contexto.
+- Recuperación de trabajos mediante sesiones sucesivas; bloqueo de dos trabajadores simultáneos y arrendamiento verificable por objetivo.
+- CLI multiplataforma (requiere Node.js 24+) para crear, enumerar, ejecutar simulaciones, consultar memoria, importar archivos y solicitar detención.
+- `FakeWorkProvider` es el único adaptador disponible. **No hay integración con modelos reales, ChatGPT ni API de pago.**
+
+## 0.10.56 — Continuación automática simulada y recuperación entre chats
+
+- Motor local propio independiente de Codex: continuaciones ficticias, presupuesto de turnos y tokens, plazo global y detección de ciclos sin progreso.
+- Excepción de contexto agotado: traspaso a un chat ficticio nuevo, conservando identificador lógico de objetivo, checkpoint validado, pasos pendientes y presupuestos. El chat anterior pierde autoridad.
+- Estado de la demostración almacenado en WorkspaceState, restaurado siempre en pausa; reanudación explícita mediante confirmación local en el panel. Escrituras serializadas para evitar sobrescrituras obsoletas.
+- Corrección del simulador para no considerar la pérdida de contexto una etapa de trabajo completada.
+- Pruebas de persistencia, cambio de chat, integridad, límites, pausas y aislamiento por conversación.
+- **No puede iniciar nuevos turnos ni crear chats en servicios externos mediante MCP estándar.** Los adaptadores reales siguen pendientes.
+
+## 0.10.55 — Panel y respuestas MCP más eficientes
+
+- Comprobación de presencia de credenciales y configuraciones de clientes IA en paralelo, con límite de seis perfiles y sin guardar secretos en caché.
+- El panel evita consultas periódicas cuando está oculto y se actualiza inmediatamente al mostrarse.
+- JSON compacto en herramientas MCP de terminales, archivos y funciones nativas, sin modificar los datos ni los permisos.
+- **144/144 suites automatizadas superadas**; compilación, bundle, ESLint y TypeScript estricto correctos.
+- Pruebas gráficas reales de VS Code pendientes mientras el actualizador permanece activo.
+
+## 0.10.54 — Optimización de lectura y descubrimiento de skills
+
+- Índice por directorio validado con identidad y marcas de modificación. Evita repetir resoluciones de rutas reales y análisis YAML en cada página.
+- Cachés acotadas: 4096 rutas, 2048 metadatos/8 MiB y 8192 hashes SHA-256. Cada solicitud revalida las entradas afectadas y mantiene los controles de permisos, rutas y enlaces simbólicos.
+- Herramientas de skills con JSON compacto; `resources/read` transporta texto como UTF-8 y usa Base64 para binarios.
+- Benchmark sintético local (180 skills, 360 archivos): nueve páginas MCP Skills, ~6,99 s antes y ~0,87 s con caché caliente; ~1,28 s en la primera pasada.
+- No se promete caché a clientes externos: `ttlMs: 0` se conserva para evitar metadatos obsoletos del lado del cliente.
+## 0.10.53 — Ejecución asíncrona y recuperación de trabajos aislados
+
+- Nuevas herramientas MCP `start_background_command_code`, `get_background_command_code`, `list_background_commands_code` y `cancel_background_command_code`: los comandos largos devuelven un `job_id` y permiten consultar resultados sin mantener ocupada la solicitud original.
+- Los procesos aislados pertenecen al trabajador de la ventana, admiten seguimiento de salida y cancelación de su árbol de procesos, sin enviar teclas ni modificar una terminal persistente. Se comprueba por prueba que una tarea avanza mientras la terminal principal sigue ocupada.
+- El cambio de coordinador no repite trabajos ni pierde su registro mientras siga vivo el trabajador; si una terminal se elimina, se revocan sus trabajos para impedir acceso tras reutilizar el ID.
+- Panel: número de trabajos activos, duración, comando reconocido sin argumentos y pistas de espera, con cancelación local confirmada. Permisos por IA restringidos al `shell_id` y niveles de comandos.
+- Límite de 12 trabajos activos por ventana, 96 registros y salida reciente de 16 KiB, con retención de 30 minutos. La sesión de trabajo no sobrevive al reinicio completo de la ventana propietaria; no hay garantía de recuperación en ese caso.
+- Mejoras previas no publicadas: endurecimiento de cierres de pasarelas, pruebas gráficas autenticadas, PowerShell 7 en WindowsApps, CI multiplataforma y comprobaciones estructurales del panel.
+- Regresión automatizada: 133/133 suites superadas antes del empaquetado; sigue pendiente la validación gráfica real si VS Code mantiene activo su actualizador.
+
+
+
 ## 0.10.52 — Conexiones locales autenticadas y protección de listados
 
 - Detectado y corregido que la configuración automática heredada guardaba una URL sin autorización pese a que el puerto principal ya exige autenticación. Ahora se rechaza esa instalación y los perfiles anteriores se marcan como no verificados, conservando la posibilidad de desvincularlos sin borrar otras entradas.

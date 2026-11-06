@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import {skillRegularFileStamp} from './skill-stat';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import YAML from 'yaml';
@@ -37,6 +38,19 @@ export interface SkillOptions {
 const MAX_SKILLS=100;
 const MAX_SKILL_BYTES=128*1024;
 const MAX_RESOURCE_BYTES=16*1024*1024;
+/** Bound metadata reuse; these entries contain no raw file resources or secrets.
+ * Every lookup still validates the filesystem path and current file identity. */
+const MAX_FRONTMATTER_CACHE=2048;
+const MAX_FRONTMATTER_CACHE_BYTES=8*1024*1024;
+let frontmatterCachedBytes=0;
+const frontmatterCache=new Map<string,{stamp:string;content:string;frontmatter:Record<string,unknown>}>();
+/** Per-directory index. On each discovery we still validate its canonical
+ * parent, its directory identity and the SKILL.md identity; only redundant
+ * per-skill realpath traversals and YAML parsing are omitted. */
+const MAX_SKILL_PATH_CACHE=4096;
+const skillPathCache=new Map<string,{
+    directoryStamp:string;fileStamp:string;source:SkillSource;name:string;metadata:SkillInfo
+}>();
 const NAME=/^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PROJECT_ROOT=/^(\.agents|\.github|\.claude)\/skills\/([a-z0-9-]{1,64})$/;
 const GLOBAL_ROOT=/^@global\/(agents|codex|system)\/([a-z0-9-]{1,64})$/;
@@ -169,26 +183,89 @@ function inspectSkillDirectory(directory:string,source:SkillSource,name:string):
     // Installation directories may link to another skill inside the authorized
     // home, but files inside that selected skill must not link elsewhere.
     const file=safeExisting(directory,'SKILL.md');
-    const content=readSkillBytes(file,MAX_SKILL_BYTES).toString('utf8').replace(/^\uFEFF/,'');
-    const match=/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
-    if(!match){throw new Error('Missing YAML frontmatter in SKILL.md.');}
-    const parsed=YAML.parseDocument(match[1],{strict:true,uniqueKeys:true});
-    if(parsed.errors.length){throw new Error('Invalid SKILL.md YAML frontmatter.');}
-    const front=parsed.toJS({maxAliasCount:0}) as unknown;
-    if(!front||typeof front!=='object'||Array.isArray(front)){
-        throw new Error('Skill frontmatter must be a mapping.');
+    const stamp=skillRegularFileStamp(file);
+    const hit=frontmatterCache.get(file);
+    let content:string;
+    let fields:Record<string,unknown>;
+    if(hit?.stamp===stamp){
+        content=hit.content;
+        fields=hit.frontmatter;
+    }else{
+        content=readSkillBytes(file,MAX_SKILL_BYTES).toString('utf8').replace(/^\uFEFF/,'');
+        const match=/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
+        if(!match){throw new Error('Missing YAML frontmatter in SKILL.md.');}
+        const parsed=YAML.parseDocument(match[1],{strict:true,uniqueKeys:true});
+        if(parsed.errors.length){throw new Error('Invalid SKILL.md YAML frontmatter.');}
+        const front=parsed.toJS({maxAliasCount:0}) as unknown;
+        if(!front||typeof front!=='object'||Array.isArray(front)){
+            throw new Error('Skill frontmatter must be a mapping.');
+        }
+        fields=front as Record<string,unknown>;
+        if(skillRegularFileStamp(file)!==stamp){
+            throw new Error('Skill metadata changed during its bounded read.');
+        }
     }
-    const fields=front as Record<string,unknown>;
     if(fields.name!==name){throw new Error('Skill name must match the directory name.');}
     if(typeof fields.description!=='string'||!fields.description.trim()||
         fields.description.length>1024){
         throw new Error('Skill description must contain 1â€“1024 characters.');
     }
+    if(hit?.stamp!==stamp){
+        if(hit){frontmatterCachedBytes-=Buffer.byteLength(hit.content);}
+        frontmatterCache.delete(file);
+        const bytes=Buffer.byteLength(content);
+        if(bytes<=MAX_FRONTMATTER_CACHE_BYTES){
+            frontmatterCache.set(file,{stamp,content,frontmatter:fields});
+            frontmatterCachedBytes+=bytes;
+            while(frontmatterCache.size>MAX_FRONTMATTER_CACHE||
+                frontmatterCachedBytes>MAX_FRONTMATTER_CACHE_BYTES){
+                const oldest=frontmatterCache.keys().next().value!;
+                frontmatterCachedBytes-=Buffer.byteLength(frontmatterCache.get(oldest)!.content);
+                frontmatterCache.delete(oldest);
+            }
+        }
+    }
     return {
         metadata:{name,description:fields.description.trim(),
             skill_path:skillPath(source,name),source,scope:SOURCES[source].scope},
-        content,frontmatter:fields
+        content,frontmatter:structuredClone(fields)
     };
+}
+function directoryIdentity(file:string):string{
+    const stat=fs.lstatSync(file,{bigint:true});
+    if(!stat.isDirectory()||stat.isSymbolicLink()){
+        throw new Error('Skill directory is not a regular directory.');
+    }
+    return [stat.dev,stat.ino,stat.mode,stat.nlink,stat.size,
+        stat.mtimeNs,stat.ctimeNs].join(':');
+}
+function indexedSkillInfo(root:string,folder:string,source:SkillSource,
+    entry:fs.Dirent,options:SkillOptions):SkillInfo{
+    // Global skill directory symlinks are supported only after the full
+    // home-root containment check by inspectSkill; never fast-path links.
+    if(entry.isSymbolicLink()){
+        return inspectSkill(root,source,entry.name,options).metadata;
+    }
+    const directory=path.join(folder,entry.name);
+    const beforeDir=directoryIdentity(directory);
+    const file=path.join(directory,'SKILL.md');
+    const beforeFile=skillRegularFileStamp(file);
+    const cached=skillPathCache.get(directory);
+    if(cached?.directoryStamp===beforeDir&&cached.fileStamp===beforeFile&&
+        cached.source===source&&cached.name===entry.name){
+        return {...cached.metadata};
+    }
+    const metadata=inspectSkill(root,source,entry.name,options).metadata;
+    if(directoryIdentity(directory)!==beforeDir||skillRegularFileStamp(file)!==beforeFile){
+        throw new Error('Skill directory changed during discovery.');
+    }
+    skillPathCache.delete(directory);
+    skillPathCache.set(directory,{directoryStamp:beforeDir,fileStamp:beforeFile,
+        source,name:entry.name,metadata});
+    if(skillPathCache.size>MAX_SKILL_PATH_CACHE){
+        skillPathCache.delete(skillPathCache.keys().next().value!);
+    }
+    return {...metadata};
 }
 export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
     skills:SkillInfo[];warnings:string[];next_cursor?:string
@@ -207,8 +284,9 @@ export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
         if(options.scope&&options.scope!=='all'&&def.scope!==options.scope){continue;}
         if(def.scope==='global'&&!options.includeGlobal){continue;}
         let entries:fs.Dirent[];
+        let folder:string;
         try{
-            const folder=safeExisting(sourceRoot(root,source,options),
+            folder=safeExisting(sourceRoot(root,source,options),
                 def.folder,def.scope==='global');
             if(!fs.statSync(folder).isDirectory()){continue;}
             entries=fs.readdirSync(folder,{withFileTypes:true});
@@ -226,7 +304,7 @@ export function listWorkspaceSkills(root:string,options:SkillOptions={}):{
                 continue;
             }
             try{
-                const info=inspectSkill(root,source,entry.name,options).metadata;
+                const info=indexedSkillInfo(root,folder,source,entry,options);
                 if(query&&!info.name.toLowerCase().includes(query)&&
                     (options.nameOnly||!info.description.toLowerCase().includes(query))){continue;}
                 if(matched++<start){continue;}
@@ -287,7 +365,9 @@ export function parseSkillUri(raw:string):{
     return {shellId,selected:skillPath(source,name),file:rest.join('/')};
 }
 function reply(value:unknown,failed=false):CallToolResult {
-    return {isError:failed,content:[{type:'text',text:JSON.stringify(value,null,2)}]};
+    // Clients parse JSON; whitespace-only formatting inflates token and
+    // transport costs for large skill catalogs without adding information.
+    return {isError:failed,content:[{type:'text',text:JSON.stringify(value)}]};
 }
 function fail(e:unknown):CallToolResult {
     return reply({error:e instanceof Error?e.message:String(e)},true);
@@ -451,12 +531,15 @@ export function registerSkillTools(server:ToolRegistry,shells:ShellApi,options:S
         async (uri,{skillFile})=>{
             if(typeof skillFile!=='string'){throw new Error('Invalid skill URI.');}
             const {shellId,selected,file}=parseSkillUri(uri.href);
-            const actual=await readSkillFileForShell(shells,shellId,selected,file,'base64',options);
-            const bytes=Buffer.from(actual.content,'base64');
             const ext=path.extname(file).toLowerCase();
-            if(['.md','.txt','.json','.yaml','.yml','.csv','.xml','.js','.ts','.py','.sh','.ps1'].includes(ext)){
+            const textual=['.md','.txt','.json','.yaml','.yml','.csv','.xml','.js','.ts','.py','.sh','.ps1'].includes(ext);
+            // Transfer text directly across worker RPC; base64 costs 33% more
+            // bytes and an extra encode/decode. Keep binary byte-exact.
+            const actual=await readSkillFileForShell(shells,shellId,selected,file,
+                textual?'utf-8':'base64',options);
+            if(textual){
                 return {contents:[{uri:uri.href,mimeType:ext==='.md'?'text/markdown':'text/plain',
-                    text:bytes.toString('utf8')}]};
+                    text:actual.content}]};
             }
             return {contents:[{uri:uri.href,mimeType:'application/octet-stream',
                 blob:actual.content}]};

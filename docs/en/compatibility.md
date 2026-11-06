@@ -2,7 +2,7 @@
 
 [Español](../es/compatibilidad.md) · [Index](../../README.md)
 
-MultiShell MCP 0.10.52 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
+MultiShell MCP 0.10.57 retains a compatibility layer for older connectors that do not expose `shell_id` explicitly. **Even through this layer, every operation must select a terminal.** There is no global active shell, and the extension cannot identify which ChatGPT conversation sent a request.
 
 Use `list_skill_names_code(shell_id="fallouttraduccion",scope="all")` to get names from the project and Codex. When ChatGPT has a cached tool schema, use `execute_shell_command_code(command="skills fallouttraduccion",cwd="@mcp")` as a read-only control query. To include global Codex skills, explicitly enable the off-by-default `multi-shell-mcp.globalCodexSkills` permission. [Full guide](skills.md).
 
@@ -86,3 +86,17 @@ See [Installation](installation.md) for updates and [Validation](validation.md) 
 `create_user_shell_code` enqueues a request in the owning window's **Requests** panel instead of granting authorization. Only that local panel can approve or deny it. Neither the public MCP tool set nor the internal control endpoint exposes an approval operation. Expired or disconnected requests create no terminal.
 
 The global `multi-shell-mcp.interactiveAutoExit` setting defaults to `true`. The panel supports a per-window preference with per-terminal overrides. Automatic exit only attempts `q` for recognized standalone interactive commands; universal detection of keyboard-waiting processes is not guaranteed.
+
+Documentation compatible with 0.10.69.
+
+Compatible with 0.10.59.
+
+Documentation compatible with 0.10.60.
+
+Compatible with 0.10.61.
+
+Documentation compatible with 0.10.62.
+
+Documentation compatible with 0.10.63.
+
+Compatible with 0.10.64.

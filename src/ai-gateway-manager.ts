@@ -167,8 +167,12 @@ export class AiGatewayManager{
         });
     }
     private async stopOne(id:string):Promise<void>{
-        const entry=this.active.get(id);this.active.delete(id);
-        if(entry){await entry.server.stop();}
+        const entry=this.active.get(id);
+        if(!entry){return;}
+        // Do not lose ownership if stop() rejects: keep the live handle so
+        // callers can retry and a failed rotation cannot orphan old credentials.
+        await entry.server.stop();
+        if(this.active.get(id)===entry){this.active.delete(id);}
     }
     async stop(id:string):Promise<void>{
         return this.serialized(async()=>{this.requireHub();await this.stopOne(id);});

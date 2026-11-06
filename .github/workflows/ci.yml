@@ -1,0 +1,55 @@
+name: MultiShell MCP CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regressions:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
+      - name: Compile and bundle
+        run: npm run bundle
+      - name: Regression batch 1/5
+        run: npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json
+      - name: Regression batch 2/5
+        run: npm run test:batch -- --batch=2 --batches=5 --report=.vscode-test/test-results/batch-2.json
+      - name: Regression batch 3/5
+        run: npm run test:batch -- --batch=3 --batches=5 --report=.vscode-test/test-results/batch-3.json
+      - name: Regression batch 4/5
+        run: npm run test:batch -- --batch=4 --batches=5 --report=.vscode-test/test-results/batch-4.json
+      - name: Regression batch 5/5
+        run: npm run test:batch -- --batch=5 --batches=5 --report=.vscode-test/test-results/batch-5.json
+      - name: Aggregate regression reports
+        if: always()
+        run: node scripts/aggregate-test-reports.cjs .vscode-test/test-results
+      - name: Check packages
+        run: npm run package:all
+      - name: Collect regression reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: .vscode-test/test-results/*.json
+          if-no-files-found: ignore

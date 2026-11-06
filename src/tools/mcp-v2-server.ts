@@ -7,6 +7,7 @@ import {registerShellTools} from './shell-tools';
 import {registerNativeTools} from './native-mcp-tools';
 import {registerSkillTools} from './agent-skills';
 import {registerSkillsExtension} from './skills-extension';
+import {registerChatHandoffTools} from './chat-handoff-tools';
 
 /** One SDK v2 server factory for the 2025 and 2026 protocol eras.
  * Session-independent state remains in ShellApi and WindowRouter. */
@@ -19,6 +20,7 @@ export function createMcpServer(shells:ShellApi,config:ToolConfiguration,
         registerScopedFileTools(tools,shells,config);
         if(config.file){registerSkillTools(tools,shells,{includeGlobal:config.globalSkills===true});}
     }
+    if(config.file){registerChatHandoffTools(tools,shells,config.edit===true);}
     if(config.shell){registerShellTools(tools,shells,signal);}
     registerNativeTools(tools,shells);
     if(config.file){registerSkillsExtension(server,shells,{includeGlobal:config.globalSkills===true});}

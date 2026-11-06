@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
+import {renderPanelMarkup} from './panel-markup';
 import type {TunnelManager,TunnelStatus} from './tunnel-manager';
 import {addLocalConnection,listLocalConnections,removeLocalConnection,
     localConnectionInstructions,LocalAiConnection} from './ai-connections';
@@ -12,6 +13,7 @@ import {readProviderStatuses,saveProviderField,clearProviderField,removeProvider
 import {AiGatewayManager,AiGatewayStatus} from './ai-gateway-manager';
 import {validAiAccessLevel} from './ai-access';
 import { MultiWindowController, UserShellRequest } from './multi-window';
+import {mapConcurrent} from './bounded-map';
 import { listWorkspaceSkills, readWorkspaceSkill, SkillOptions } from './tools/agent-skills';
 
 interface Snapshot {
@@ -34,7 +36,7 @@ interface Snapshot {
     requests?: UserShellRequest[];
     skillsEnabled?: boolean;
     globalSkillsEnabled?: boolean;
-    shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; recovery_reason?: string; external_busy?: boolean; execution_phase?: string; input_wait_hint?: string; output_silent_seconds?: number; busy: boolean; queued: number; auto_exit_interactive?:boolean; auto_exit_override?:boolean }>;
+    shells?: Array<{ shell_id: string; alias?: string; initial_cwd: string; origin?: 'user'|'mcp'|'automatic'; timed_out_running?: boolean; recovery_required?: boolean; recovery_reason?: string; external_busy?: boolean; execution_phase?: string; input_wait_hint?: string; output_silent_seconds?: number; busy: boolean; queued: number; auto_exit_interactive?:boolean; auto_exit_override?:boolean; background_jobs?:Array<{job_id:string;status:string;command_label:string;elapsed_ms:number;input_hint?:string}> }>;
     windows?: Array<{ window_id: string; workspace: string; online: boolean }>;
 }
 interface UIMessage {
@@ -47,6 +49,7 @@ interface UIMessage {
     commandIndex?:unknown;
     linkIndex?:unknown;
     shellId?:unknown;
+    jobId?:unknown;
     level?:unknown;
     cwd?: unknown;
     share?: unknown;
@@ -77,6 +80,7 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         private readonly getTunnelManager?:()=>TunnelManager|undefined,
         private readonly getAiGatewayManager?:()=>AiGatewayManager|undefined
     ) {
+
     }
     private locale(): 'es' | 'en' {
         return vscode.env.language.toLowerCase().startsWith('es') ? 'es' : 'en';
@@ -91,282 +95,7 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         view.webview.options = { enableScripts: true, localResourceRoots: [assets] };
         // Only bundled code; no inline scripts or external network assets.
         // Dynamic text from workspaces and shell IDs is inserted with textContent.
-        view.webview.html = [
-            '<!DOCTYPE html><html><head><meta charset="UTF-8">',
-            '<meta name="viewport" content="width=device-width, initial-scale=1">',
-            '<meta http-equiv="Content-Security-Policy" content="default-src ',
-            "'none'; img-src ", view.webview.cspSource,
-            '; style-src ', view.webview.cspSource,
-            "; script-src 'nonce-", nonce, "' ", view.webview.cspSource, ';">',
-            '<link href="', css.toString(), '" rel="stylesheet"></head><body>',
-            '<div class="app" id="app">',
-                '<header class="masthead">',
-                    '<div class="masthead-title">',
-                        '<span class="brand-icon" aria-hidden="true">&gt;_</span>',
-                        '<div><h1>MultiShell MCP Server</h1><p class="subline" data-i18n="subtitle"></p></div>',
-                    '</div>',
-                    '<button class="icon-button refresh-button" id="refresh" type="button" data-icon="refresh" data-aria-i18n="refresh"></button>',
-                '</header>',
-                '<div class="connection" id="connection">',
-                    '<span class="status-indicator" aria-hidden="true"></span>',
-                    '<div class="connection-text">',
-                        '<strong id="role"></strong>',
-                        '<span id="connectionDetail" class="subline"></span>',
-                    '</div>',
-                    '<button type="button" id="toggle" class="connection-action"></button>',
-                '</div>',
-
-                '<details class="navigation" id="navDisclosure" open>',
-                    '<summary class="navigation-summary"><span data-icon="menu" aria-hidden="true"></span>',
-                        '<span data-i18n="navTitle"></span><strong id="activeViewLabel"></strong><span data-icon="chevron" aria-hidden="true"></span></summary>',
-                    '<nav class="nav-list" role="tablist" aria-label="MultiShell MCP">',
-                        '<span class="nav-heading" data-i18n="navWorkspace"></span>',
-                        '<button type="button" role="tab" id="tabOverview" aria-selected="true" aria-controls="overviewPage"><span data-icon="grid"></span><span data-i18n="overview"></span></button>',
-                        '<button type="button" role="tab" id="tabShells" aria-selected="false" aria-controls="shellsPage"><span data-icon="terminal"></span><span data-i18n="shells"></span><span id="shellCount" class="count"></span></button>',
-                        '<button type="button" role="tab" id="tabWindows" aria-selected="false" aria-controls="windowsPage"><span data-icon="monitor"></span><span data-i18n="connectedWindows"></span><span id="windowCount" class="count"></span></button>',
-                        '<button type="button" role="tab" id="tabRequests" aria-selected="false" aria-controls="requestsPage"><span data-icon="inbox"></span><span data-i18n="requests"></span><span id="navRequestsCount" class="count"></span></button>',
-                        '<button type="button" role="tab" id="tabSkills" aria-selected="false" aria-controls="skillsPage"><span data-icon="book"></span><span data-i18n="skills"></span><span id="skillCount" class="count"></span></button>',
-                        '<span class="nav-heading" data-i18n="navAi"></span>',
-                        '<button type="button" role="tab" id="tabConnections" aria-selected="false" aria-controls="connectionsPage"><span data-icon="network"></span><span data-i18n="aiConnections"></span><span id="connectionsCount" class="count"></span></button>',
-                        '<button type="button" role="tab" id="tabTunnel" aria-selected="false" aria-controls="tunnelPage"><span data-icon="lock"></span><span data-i18n="tunnelTab"></span></button>',
-                        '<span class="nav-heading" data-i18n="navAdministration"></span>',
-                        '<button type="button" role="tab" id="tabSettings" aria-selected="false" aria-controls="settingsPage"><span data-icon="settings"></span><span data-i18n="settings"></span></button>',
-                    '</nav>',
-                '</details>',
-                '<main>',
-
-                    '<section role="tabpanel" id="overviewPage" aria-labelledby="tabOverview">',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="overviewTitle"></h2>',
-                            '<span class="subline" data-i18n="overviewHelp"></span></div></div>',
-                        '<div class="overview-stats">',
-                            '<div class="overview-stat"><strong id="overviewShells">0</strong><span data-i18n="shells"></span></div>',
-                            '<div class="overview-stat"><strong id="overviewWindows">0</strong><span data-i18n="connectedWindows"></span></div>',
-                            '<div class="overview-stat"><strong id="overviewRequests">0</strong><span data-i18n="requests"></span></div>',
-                        '</div>',
-                        '<div class="section-heading" data-i18n="currentWindow"></div>',
-                '<div class="local-window" id="localWindow">',
-                    '<div class="eyebrow" data-i18n="currentWindow"></div>',
-                    '<div class="window-inline">',
-                        '<span class="workspace-glyph" data-icon="folder" aria-hidden="true"></span>',
-                        '<div class="workspace-text"><strong id="workspaceName"></strong><span id="workspace" class="subline path"></span></div>',
-                        '<button id="copyWindow" type="button" class="icon-button" data-icon="copy" data-aria-i18n="copyWindow"></button>',
-                    '</div>',
-                    '<div class="window-token" id="windowToken"><span data-i18n="windowIdShort"></span><code id="windowId"></code></div>',
-                '</div>',
-
-                        '<div class="overview-actions">',
-                            '<button type="button" id="overviewTerminals" data-i18n="shells"></button>',
-                            '<button type="button" id="overviewConnections" data-i18n="aiConnections"></button>',
-                        '</div>',
-                        '<p class="overview-note" data-i18n="overviewSecurity"></p>',
-                    '</section>',
-
-                    '<section role="tabpanel" id="requestsPage" aria-labelledby="tabRequests" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title">',
-                            '<div class="requests-heading"><h2 data-i18n="pendingRequests"></h2>',
-                                '<span id="requestsCount" class="count" aria-live="polite"></span></div>',
-                            '<span data-i18n="requestsHelp" class="subline"></span></div></div>',
-                        '<div id="requestsList" class="request-list" role="list"></div>',
-                        '<div id="requestsEmpty" class="requests-empty" role="status">',
-                            '<span data-icon="check-circle" aria-hidden="true"></span>',
-                            '<span data-i18n="noRequests"></span>',
-                        '</div>',
-                    '</section>',
-                    '<section role="tabpanel" id="shellsPage" aria-labelledby="tabShells">',
-                        '<div class="toolbar">',
-                            '<div class="toolbar-title"><h2 data-i18n="shellsLabel"></h2><span id="shellMeta" class="subline"></span></div>',
-                            '<button id="newShell" type="button" class="add-button" aria-expanded="false" aria-controls="createPanel">',
-                                '<span data-icon="plus" aria-hidden="true"></span><span data-i18n="new"></span>',
-                            '</button>',
-                        '</div>',
-                        '<div class="create-panel" id="createPanel" hidden>',
-                            '<div class="form-title"><strong data-i18n="createTitle"></strong>',
-                            '<button type="button" id="cancelCreate" class="icon-button" data-icon="x" data-aria-i18n="cancel"></button></div>',
-                            '<form id="shellForm">',
-                                '<label for="shellId" data-i18n="identifier"></label>',
-                                '<input id="shellId" autocomplete="off" required minlength="2" maxlength="40" ',
-                                    'pattern="[A-Za-z][A-Za-z0-9_-]+" placeholder="fallout">',
-                                '<label for="cwd" data-i18n="directory"></label>',
-                                '<input id="cwd" autocomplete="off" type="text" data-placeholder-i18n="directoryPlaceholder">',
-                                '<p class="field-help" data-i18n="directoryHelp"></p>',
-                                '<label class="checkline" for="share"><input type="checkbox" id="share">',
-                                    '<span data-i18n="allowShare"></span></label>',
-                                '<div class="form-actions"><button type="button" id="formCancel" class="quiet" data-i18n="cancel"></button>',
-                                    '<button type="submit" id="create" data-i18n="create"></button></div>',
-                            '</form>',
-                        '</div>',
-                        '<div class="search-row" id="searchRow" hidden><span data-icon="search" aria-hidden="true"></span>',
-                            '<input type="search" id="searchShells" data-placeholder-i18n="search" aria-label="Filter shells"></div>',
-                        '<div id="shells" class="shell-list" role="list"></div>',
-                        '<div id="shellEmpty" class="empty-state" hidden><div class="empty-icon" data-icon="terminal"></div>',
-                            '<strong id="shellEmptyTitle"></strong><span id="shellEmptyHint"></span></div>',
-                    '</section>',
-                    '<section role="tabpanel" id="windowsPage" aria-labelledby="tabWindows" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="connectedWindows"></h2>',
-                            '<span data-i18n="windowsHelp" class="subline"></span></div></div>',
-                        '<div id="windows" class="windows-list" role="list"></div>',
-                        '<div id="windowEmpty" class="empty-state" hidden><div class="empty-icon" data-icon="monitor"></div>',
-                            '<strong data-i18n="noWindows"></strong></div>',
-                    '</section>',
-                    '<section role="tabpanel" id="skillsPage" aria-labelledby="tabSkills" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="windowSkills"></h2>',
-                            '<span class="subline" data-i18n="skillsHelp"></span></div>',
-                            '<button id="refreshSkills" type="button" class="icon-button" data-icon="refresh" data-aria-i18n="refreshSkills"></button></div>',
-                        '<div class="search-row"><span data-icon="search" aria-hidden="true"></span>',
-                            '<input type="search" id="searchSkills" maxlength="100" data-placeholder-i18n="searchSkills" data-aria-i18n="searchSkills"></div>',
-                        '<div class="skills-scope"><label for="skillsScope" data-i18n="skillScope"></label>',
-                            '<select id="skillsScope"><option value="all" data-i18n="allSkills"></option>',
-                                '<option value="project" data-i18n="project"></option><option value="global" data-i18n="personalSkills"></option></select></div>',
-                        '<p class="skills-help" id="skillsPermission"></p>',
-                        '<button id="skillSettings" class="skill-settings" type="button" data-i18n="skillSettings"></button>',
-                        '<p class="skills-help" id="skillsStatus" role="status" aria-live="polite"></p>',
-                        '<div id="skillsList" class="skills-list" role="list" aria-busy="false"></div>',
-                        '<button id="moreSkills" type="button" class="skill-more" data-i18n="moreSkills" hidden></button>',
-                        '<p class="skills-help" id="skillsWarnings"></p>',
-                    '</section>',
-                    '<section role="tabpanel" id="tunnelPage" aria-labelledby="tabTunnel" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="tunnelHeading"></h2>',
-                            '<span class="subline" data-i18n="tunnelHelp"></span></div>',
-                            '<button type="button" id="tunnelRefresh" class="icon-button" data-icon="refresh" data-aria-i18n="refresh"></button></div>',
-                        '<div class="tunnel-status" role="status" aria-live="polite">',
-                            '<span id="tunnelIndicator" class="status-indicator" aria-hidden="true"></span>',
-                            '<div><strong id="tunnelStatus"></strong><p id="tunnelDetails" class="field-help"></p></div>',
-                        '</div>',
-                        '<p id="tunnelWarning" class="field-help tunnel-warning"></p>',
-                        '<div class="tunnel-actions">',
-                            '<button type="button" id="tunnelInstall" data-i18n="tunnelInstall"></button>',
-                            '<button type="button" id="tunnelReuse" data-i18n="tunnelReuse"></button>',
-                        '</div>',
-                        '<form id="tunnelForm" autocomplete="off">',
-                            '<label for="tunnelId" data-i18n="tunnelId"></label>',
-                            '<input type="text" id="tunnelId" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="60" required placeholder="tunnel_…">',
-                            '<label for="tunnelProfile" data-i18n="tunnelProfile"></label>',
-                            '<input type="text" id="tunnelProfile" spellcheck="false" autocomplete="off" maxlength="40" required value="vscode-local">',
-                            '<label for="tunnelApiKey" data-i18n="tunnelKey"></label>',
-                            '<input type="password" id="tunnelApiKey" autocomplete="new-password" maxlength="8192" required>',
-                            '<p class="field-help" data-i18n="tunnelKeyHelp"></p>',
-                            '<div class="tunnel-actions">',
-                                '<button type="submit" id="tunnelConfigure" data-i18n="tunnelConfigure"></button>',
-                                '<button type="button" id="tunnelUpdateKey" data-i18n="tunnelUpdateKey"></button>',
-                            '</div>',
-                        '</form>',
-                        '<div class="tunnel-controls">',
-                            '<div class="tunnel-actions">',
-                                '<button type="button" id="tunnelStart" data-i18n="tunnelStart"></button>',
-                                '<button type="button" id="tunnelStop" data-i18n="tunnelStop"></button>',
-                            '</div>',
-                            '<label class="checkline" for="tunnelAutostart">',
-                                '<input type="checkbox" id="tunnelAutostart"><span data-i18n="tunnelAutostart"></span>',
-                            '</label>',
-                            '<p class="field-help" data-i18n="tunnelAutostartHelp"></p>',
-                        '</div>',
-                    '</section>',
-
-                    '<section role="tabpanel" id="connectionsPage" aria-labelledby="tabConnections" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="aiConnections"></h2>',
-                            '<span class="subline" data-i18n="connectionsHelp"></span></div>',
-                            '<button type="button" class="add-button" id="newAiConnection" aria-expanded="false" aria-controls="aiFormPanel"><span data-icon="plus" aria-hidden="true"></span><span data-i18n="new"></span></button></div>',
-                        '<div class="connection-overview" id="openAiEntry">',
-                            '<span data-icon="lock" aria-hidden="true"></span>',
-                            '<div><strong data-i18n="chatgpt"></strong><p id="openAiStatus" class="subline"></p></div>',
-                            '<button type="button" id="openAiDetails" data-i18n="manage"></button>',
-                        '</div>',
-                        '<details class="ai-onboarding" id="chatgptGuide">',
-                            '<summary class="ai-onboarding-summary"><span class="ai-help-mark" aria-hidden="true">?</span><span data-i18n="chatgptGuideTitle"></span></summary>',
-                            '<div class="ai-onboarding-content">',
-                                '<p data-i18n="chatgptGuideExplanation"></p>',
-                                '<strong class="ai-onboarding-subtitle" data-i18n="chatgptGuidePlatformTitle"></strong>',
-                                '<ol class="ai-onboarding-steps">',
-                                    '<li data-i18n="chatgptGuidePlatformTunnel"></li>',
-                                    '<li data-i18n="chatgptGuidePlatformKey"></li>',
-                                '</ol>',
-                                '<div class="ai-onboarding-links">',
-                                    '<button type="button" id="chatgptOpenTunnels" data-i18n="chatgptOpenTunnels"></button>',
-                                    '<button type="button" id="chatgptOpenRuntimeKeys" data-i18n="chatgptOpenRuntimeKeys"></button>',
-                                '</div>',
-                                '<strong class="ai-onboarding-subtitle" data-i18n="chatgptGuideLocalTitle"></strong>',
-                                '<p data-i18n="chatgptGuideLocalSetup"></p>',
-                                '<strong class="ai-onboarding-subtitle" data-i18n="chatgptGuidePluginTitle"></strong>',
-                                '<ol class="ai-onboarding-steps">',
-                                    '<li data-i18n="chatgptGuidePluginOpen"></li>',
-                                    '<li data-i18n="chatgptGuidePluginFields"></li>',
-                                    '<li data-i18n="chatgptGuidePluginAuth"></li>',
-                                    '<li data-i18n="chatgptGuidePluginCreate"></li>',
-                                '</ol>',
-                                '<div class="ai-onboarding-links">',
-                                    '<button type="button" id="chatgptOpenChat" data-i18n="chatgptOpenChat"></button>',
-                                    '<button type="button" id="chatgptOpenMcpGuide" data-i18n="chatgptOpenMcpGuide"></button>',
-                                '</div>',
-                                '<p class="field-help" data-i18n="chatgptGuideWarning"></p>',
-                            '</div>',
-                        '</details>',
-                        '<p class="connections-warning" data-i18n="connectionsSecurity"></p>',
-                        '<div class="create-panel" id="aiFormPanel" hidden>',
-                            '<div class="form-title"><strong data-i18n="newAiTitle"></strong>',
-                                '<button type="button" id="cancelAiForm" class="icon-button" data-icon="x" data-aria-i18n="cancel"></button></div>',
-                            '<form id="aiForm" autocomplete="off">',
-                                '<label for="aiProvider" data-i18n="aiProvider"></label>',
-                                '<select id="aiProvider" required>',
-                                    '<optgroup id="aiLocalGroup" label="Local">',
-                                    '<option value="vscode" data-i18n="providerVscode"></option>',
-                                    '<option value="claude-code" data-i18n="providerClaude"></option>',
-                                    '<option value="gemini-cli" data-i18n="providerGemini"></option>',
-                                    '<option value="cursor" data-i18n="providerCursor"></option>',
-                                    '<option value="other" data-i18n="providerOther"></option>',
-                                    '</optgroup>',
-                                    '<optgroup id="aiRemoteGroup" label="Cloud / API">',
-                                        '<option value="claude-web">Claude web / Cowork</option>',
-                                        '<option value="grok-web">Grok web</option>',
-                                        '<option value="gemini-api">Gemini Interactions API</option>',
-                                        '<option value="mistral-work">Mistral Work / Studio</option>',
-                                        '<option value="cursor-remote">Cursor remoto</option>',
-                                    '</optgroup>',
-                                '</select>',
-                                '<label for="aiName" data-i18n="aiName"></label>',
-                                '<input id="aiName" required maxlength="48" autocomplete="off" data-placeholder-i18n="aiNamePlaceholder">',
-                                '<p id="aiFormHelp" class="field-help" data-i18n="aiFormHelp"></p>',
-                                '<div class="form-actions"><button type="button" id="cancelAiForm2" class="quiet" data-i18n="cancel"></button>',
-                                    '<button type="submit" id="saveAi" data-i18n="saveAi"></button></div>',
-                            '</form>',
-                        '</div>',
-                        '<div class="section-heading" data-i18n="localClients"></div>',
-                        '<div id="aiList" class="ai-list" role="list"></div>',
-                        '<p id="aiEmpty" class="empty-state-message" data-i18n="aiEmpty"></p>',
-                    '</section>',
-
-                    '<section role="tabpanel" id="settingsPage" aria-labelledby="tabSettings" hidden>',
-                        '<div class="toolbar"><div class="toolbar-title"><h2 data-i18n="settings"></h2>',
-                            '<span class="subline" data-i18n="settingsHelp"></span></div></div>',
-                        '<div class="section-heading" data-i18n="mcpConfiguration"></div>',
-                '<form class="port-settings" id="portForm">',
-                    '<label for="portInput" data-i18n="portLabel"></label>',
-                    '<div class="port-controls">',
-                        '<input id="portInput" type="number" inputmode="numeric" min="1024" max="65535" step="1" required>',
-                        '<button id="savePort" type="submit" data-i18n="savePort"></button>',
-                    '</div>',
-                    '<p class="port-help" data-i18n="portHelp"></p>',
-                '</form>',
-                '<div class="interactive-settings">',
-                    '<label class="checkline" for="windowInteractive">',
-                        '<input type="checkbox" id="windowInteractive">',
-                        '<span data-i18n="windowInteractive"></span>',
-                    '</label>',
-                    '<p class="field-help" data-i18n="windowInteractiveHelp"></p>',
-                '</div>',
-
-                        '<p class="settings-note" data-i18n="settingsSecurity"></p>',
-                    '</section>',
-                '</main>',
-                '<footer class="footer">',
-                    '<details class="help"><summary><span data-icon="info" aria-hidden="true"></span>',
-                        '<span data-i18n="usageTitle"></span><span class="arrow" data-icon="chevron"></span></summary>',
-                        '<p data-i18n="isolation"></p></details>',
-                '</footer>',
-            '</div>',
-            '<div id="notice" role="status" aria-live="polite" hidden></div>',
-            '<script nonce="', nonce, '" src="', js.toString(), '"></script>',
-            '</body></html>'
-        ].join('');
+        view.webview.html = renderPanelMarkup(view.webview.cspSource,js.toString(),css.toString(),nonce);
         view.webview.onDidReceiveMessage((raw: UIMessage) => { void this.message(raw); },
             undefined, this.context.subscriptions);
         view.onDidDispose(() => {
@@ -375,6 +104,11 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
             if (this.timer) {clearInterval(this.timer);}
             this.timer = undefined;
         }, undefined, this.context.subscriptions);
+        // Hidden views should not poll profiles, files or SecretStorage.
+        // Reopen refreshes immediately rather than waiting for the next tick.
+        view.onDidChangeVisibility?.(() => {
+            if(view.visible){void this.refresh(true);}
+        },undefined,this.context.subscriptions);
         if (this.timer) {clearInterval(this.timer);}
         this.timer = setInterval(() => { void this.refresh(false); }, 3000);
         void this.refresh();
@@ -466,7 +200,7 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
         }
     }
     async refresh(force = true): Promise<void> {
-        if (!this.view || this.busy) {return;}
+        if (!this.view || this.busy || (!force && this.view.visible===false)) {return;}
         this.busy = true;
         try {
             const manager = this.getController();
@@ -491,17 +225,21 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                 secrets:this.context.secrets
             });
             snapshot.aiGateways=this.getAiGatewayManager?.()?.statuses()||[];
-            snapshot.aiLinkStates={};
-            for(const profile of snapshot.aiConnections){
+            // Client config files are independent. Check up to six profiles at
+            // once, with results kept in profile order. Re-evaluate on every
+            // refresh so external changes are never hidden by a stale cache.
+            const linkEntries=await mapConcurrent(snapshot.aiConnections,6,async profile=>{
+                let status:ClientConfigState;
                 try{
-                    snapshot.aiLinkStates[profile.id]=await connectionConfigStatus(
-                        profile,manager?.listeningPort||snapshot.port,profileStore,snapshot.workspace);
+                    status=await connectionConfigStatus(
+                        profile,manager?.listeningPort||snapshot.port||3000,profileStore,snapshot.workspace);
                 }catch{
-                    snapshot.aiLinkStates[profile.id]={
-                        configured:false,managed:false,scope:'unsupported',detail:'Configuration unavailable'
-                    };
+                    status={configured:false,managed:false,scope:'unsupported',
+                        detail:'Configuration unavailable'};
                 }
-            }
+                return [profile.id,status] as const;
+            });
+            snapshot.aiLinkStates=Object.fromEntries(linkEntries);
             const tunnel=this.getTunnelManager?.();
             if(tunnel){
                 try{
@@ -885,6 +623,24 @@ export class MultiShellPanel implements vscode.WebviewViewProvider, vscode.Dispo
                 manager.panelSetShellAutoExit(raw.id,raw.value===null?undefined:raw.value);
                 await this.context.workspaceState.update(
                     'multiShellInteractiveShellOverrides',manager.panelGetShellOverrides());
+                await this.refresh();return;
+            }
+            if(raw.type==='cancel_background'){
+                if(typeof raw.id!=='string'||typeof raw.jobId!=='string'){
+                    throw new Error('Invalid background job identifier.');
+                }
+                const local=(await manager.panelState()).shells.find(shell=>shell.shell_id===raw.id);
+                const job=local?.background_jobs.find(item=>item.job_id===raw.jobId);
+                if(!job||!['running','cancelling'].includes(job.status)){
+                    throw new Error('No active local background job with this identifier.');
+                }
+                const confirmation=this.locale()==='es'?'Cancelar trabajo':'Cancel job';
+                const answer=await vscode.window.showWarningMessage(
+                    this.locale()==='es'
+                        ?'¿Cancelar el proceso aislado de '+raw.id+'? No se interrumpirá la terminal integrada.'
+                        :'Cancel the isolated process for '+raw.id+'? The integrated terminal will not be interrupted.',
+                    {modal:true},confirmation);
+                if(answer===confirmation){manager.panelCancelBackgroundJob(raw.id,raw.jobId);}
                 await this.refresh();return;
             }
             if (raw.type === 'alias') {

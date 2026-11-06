@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {createHash} from 'node:crypto';
+import {skillRegularFileStamp} from './skill-stat';
 import {z} from 'zod';
 import {ProtocolError} from '@modelcontextprotocol/server';
 import type {McpServer} from '@modelcontextprotocol/server';
@@ -13,6 +14,11 @@ const MAX_SKILL_BYTES=16*1024*1024;
 const MAX_WALK_ENTRIES=4096;
 const PAGE=20;
 const CACHE={resultType:'complete' as const,ttlMs:0,cacheScope:'private' as const};
+/** SHA-256 memoization is stat-validated on *every* manifest traversal.
+ * Resource additions/deletions are detected by readdir, including nested
+ * directories. No bytes or credentials are retained. */
+const MAX_HASH_CACHE=8192;
+const resourceHashCache=new Map<string,{stamp:string;digest:string}>();
 
 export interface ServedSkillFile {uri:string;digest:string;size:number}
 export interface ServedSkill {
@@ -51,17 +57,31 @@ export function buildSkillEntry(root:string,shellId:string,selected:string,
             }else if(stat.isFile()){
                 if(files.length>=MAX_ENTRIES){throw new Error('Skill exceeds 512 files.');}
                 if(totalBytes+stat.size>MAX_SKILL_BYTES){throw new Error('Skill exceeds 16 MiB.');}
-                const bytes=readSkillBytes(real,MAX_SKILL_BYTES-totalBytes);
-                if(bytes.length!==stat.size){throw new Error('Skill resource changed during manifest snapshot.');}
-                totalBytes+=bytes.length;
+                const stamp=skillRegularFileStamp(real);
+                const cached=resourceHashCache.get(real);
+                let digest:string;
+                if(cached?.stamp===stamp){
+                    digest=cached.digest;
+                }else{
+                    const bytes=readSkillBytes(real,MAX_SKILL_BYTES-totalBytes);
+                    if(bytes.length!==stat.size||skillRegularFileStamp(real)!==stamp){
+                        throw new Error('Skill resource changed during manifest snapshot.');
+                    }
+                    digest='sha256:'+createHash('sha256').update(bytes).digest('hex');
+                    resourceHashCache.delete(real);
+                    resourceHashCache.set(real,{stamp,digest});
+                    if(resourceHashCache.size>MAX_HASH_CACHE){
+                        resourceHashCache.delete(resourceHashCache.keys().next().value!);
+                    }
+                }
+                totalBytes+=stat.size;
                 if(parts.length===0&&entry.name==='SKILL.md'&&
-                    bytes.toString('utf8').replace(/^\uFEFF/,'')!==content){
+                    digest!=='sha256:'+createHash('sha256').update(content,'utf8').digest('hex')){
                     throw new Error('SKILL.md changed during manifest snapshot.');
                 }
                 files.push({
                     uri:skillUri(shellId,metadata,[...parts,entry.name].join('/')),
-                    digest:'sha256:'+createHash('sha256').update(bytes).digest('hex'),
-                    size:bytes.length
+                    digest,size:stat.size
                 });
             }else{
                 throw new Error('Special files are not allowed in skill manifests.');

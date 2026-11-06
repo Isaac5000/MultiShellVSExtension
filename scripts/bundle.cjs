@@ -20,7 +20,11 @@ async function main(){
    alias:{'jsonc-parser':require.resolve('jsonc-parser/lib/esm/main.js')},
    packages:'bundle',
    sourcemap:false,
-   minify:false,
+   // Keep public tool names and dynamic exports stable; remove only redundant
+   // syntax and whitespace. One JS bundle runs on Windows, Linux and macOS.
+   minifySyntax:true,
+   minifyWhitespace:true,
+   minifyIdentifiers:true,
    legalComments:'none',
    logLevel:'info'
  });

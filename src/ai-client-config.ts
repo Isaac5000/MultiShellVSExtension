@@ -191,7 +191,7 @@ export async function configureClient(
 ):Promise<'configured'|'already-configured'>{
     throw new Error('Automatic MCP installation requires an authenticated per-AI gateway and secure client credential delivery. Use Copy configuration and set up the client manually.');
 }
-export async function disconnectClient(profile:LocalAiConnection,port:number,store:Store,
+export async function disconnectClient(profile:LocalAiConnection,_port:number,store:Store,
     workspace?:string,roots:{home?:string;copilotHome?:string}={}):Promise<boolean>{
     const owners=saved(store);
     const record=owners[profile.id];

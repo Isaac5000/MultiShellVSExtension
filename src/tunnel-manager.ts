@@ -108,8 +108,52 @@ export class TunnelManager{
         return legacy?['--profile-file',legacy]:
             ['--profile',this.profile(),'--profile-dir',settingsDir(this.context)];
     }
+    /** An update can leave a verified child running from the previous VSIX.
+     * Only consider a sibling installation of this exact extension (same
+     * VS Code extensions directory and official tunnel platform/version).
+     * A lock file cannot redirect execution to an arbitrary filesystem path. */
+    private priorExtensionRoot(executable:string,asset:ReturnType<typeof tunnelAsset>):
+    string|undefined{
+        const current=this.context.extensionUri?.fsPath;
+        if(!current||typeof executable!=='string'){return undefined;}
+        const root=path.dirname(path.dirname(path.dirname(path.dirname(executable))));
+        if(!/^local-multishell\.multi-shell-mcp-server-\d+\.\d+\.\d+$/.test(
+            path.basename(root))){return undefined;}
+        const normalize=(value:string)=>{
+            const resolved=path.resolve(value);
+            return process.platform==='win32'?resolved.toLowerCase():resolved;
+        };
+        if(normalize(root)===normalize(current)||
+            normalize(path.dirname(root))!==normalize(path.dirname(current))||
+            normalize(path.join(root,'tunnel-client','v'+TUNNEL_VERSION,
+                asset.platformTag,asset.binary))!==normalize(executable)){
+            return undefined;
+        }
+        return root;
+    }
+    /** Prefer the native binary bundled with this VSIX for all fresh starts.
+     * Adopt a surviving older child only after official binary verification
+     * AND matching its kernel process identity with our ownership lock. */
     private async installed():Promise<string|undefined>{
-        return verifiedExecutable(this.context.globalStorageUri.fsPath,tunnelAsset());
+        const asset=tunnelAsset();
+        const packagedRoot=this.context.extensionUri?.fsPath;
+        const embedded=packagedRoot?await verifiedExecutable(packagedRoot,asset):undefined;
+        const record=await this.launchLock.inspect();
+        if(record?.childPid&&record.childIdentity&&
+            record.profile===this.profile()&&
+            record.endpointPort===this.currentMcpPort()&&
+            processIsAlive(record.childPid)){
+            const old=await verifiedExecutable(this.context.globalStorageUri.fsPath,asset);
+            const priorRoot=this.priorExtensionRoot(record.childIdentity.executable,asset);
+            const prior=priorRoot?await verifiedExecutable(priorRoot,asset):undefined;
+            for(const executable of [old,prior]){
+                if(!executable){continue;}
+                const identity=await readTunnelProcessIdentity(record.childPid,executable);
+                if(sameTunnelProcess(identity,record.childIdentity)){return executable;}
+            }
+        }
+        // A generic/slim VSIX still supports a previously verified install.
+        return embedded||verifiedExecutable(this.context.globalStorageUri.fsPath,asset);
     }
     async status():Promise<TunnelStatus>{
         const [exe,ready,occupied,record]=await Promise.all([
@@ -135,6 +179,15 @@ export class TunnelManager{
     }
     async install():Promise<string>{
         return this.runExclusive(async()=>{
+            // Embedded package: already installed and SHA-256 verified. Do not
+            // copy 67 MiB into globalStorage or attempt another download.
+            const existing=await this.installed();
+            if(existing){
+                this.notify('Tunnel Client v'+TUNNEL_VERSION+' verified and available for this OS.');
+                return existing;
+            }
+            // Backward-compatible generic VSIX: explicitly opt in to downloading
+            // the pinned archive, exactly as before.
             const exe=await installOfficialTunnel(this.context.globalStorageUri.fsPath,
                 tunnelAsset(),text=>this.notify(text));
             this.notify('Tunnel Client v'+TUNNEL_VERSION+' verified and installed for this OS.');
@@ -267,28 +320,30 @@ export class TunnelManager{
         }
     }
     /** Adopt only our own lock record and a kernel-verified surviving
-     * Tunnel Client instance. No process is killed during adoption. */
+     * Tunnel Client instance. No process is killed during adoption.
+     * The internal form can safely run inside a start() lock. */
+    private async adoptDetachedUnlocked():Promise<boolean>{
+        if(!await this.canOwnTunnel()||this.child||this.adopted){return false;}
+        const record=await this.launchLock.inspect();
+        if(!record?.childPid||!record.childIdentity||
+            record.profile!==this.profile()||
+            record.endpointPort!==this.currentMcpPort()||
+            !processIsAlive(record.childPid)){return false;}
+        const exe=await this.installed();
+        if(!exe){return false;}
+        const identity=await readTunnelProcessIdentity(record.childPid,exe);
+        if(!sameTunnelProcess(identity,record.childIdentity)){return false;}
+        if(!await this.launchLock.claimDetached(record.token,identity!,async()=>
+            sameTunnelProcess(identity,
+                await readTunnelProcessIdentity(identity!.pid,exe)))){
+            return false;
+        }
+        this.adopted=identity;
+        this.notify('Verified extension-owned Tunnel Client reattached after reload.');
+        return true;
+    }
     async adoptDetached():Promise<boolean>{
-        return this.runExclusive(async()=>{
-            if(!await this.canOwnTunnel()||this.child||this.adopted){return false;}
-            const record=await this.launchLock.inspect();
-            if(!record?.childPid||!record.childIdentity||
-                record.profile!==this.profile()||
-                record.endpointPort!==this.currentMcpPort()||
-                !processIsAlive(record.childPid)){return false;}
-            const exe=await this.installed();
-            if(!exe){return false;}
-            const identity=await readTunnelProcessIdentity(record.childPid,exe);
-            if(!sameTunnelProcess(identity,record.childIdentity)){return false;}
-            if(!await this.launchLock.claimDetached(record.token,identity!,async()=>
-                sameTunnelProcess(identity,
-                    await readTunnelProcessIdentity(identity!.pid,exe)))){
-                return false;
-            }
-            this.adopted=identity;
-            this.notify('Verified extension-owned Tunnel Client reattached after reload.');
-            return true;
-        });
+        return this.runExclusive(()=>this.adoptDetachedUnlocked());
     }
     async start():Promise<'started'|'already-running'|'occupied'>{
         return this.runExclusive(async()=>{
@@ -310,9 +365,12 @@ export class TunnelManager{
                 this.adopted=undefined;
                 await this.launchLock.release();
             }
-            // A v0.0.18 tunnel already listening on 8080 is never replaced,
-            // even if its profile is identical to ours.
-            if(await isPortOccupied(HEALTH_PORT)){return 'occupied';}
+            // The previous VS Code host can exit after our first adoption attempt.
+            // Reclaim only a fingerprint-verified tunnel from our exact profile;
+            // never stop or replace an unrelated listener on port 8080.
+            if(await isPortOccupied(HEALTH_PORT)){
+                return await this.adoptDetachedUnlocked()?'already-running':'occupied';
+            }
             await this.verifyBeforeStart(exe);
             if(!await this.launchLock.acquire(this.profile(),this.currentMcpPort()!)){
                 return 'already-running';
@@ -439,7 +497,17 @@ export class TunnelManager{
         const [exe,key]=await Promise.all([this.installed(),
             this.context.secrets.get(SECRET_KEY)]);
         if(!exe||!key||!fs.existsSync(this.profileFile())){return;}
-        if(await isPortOccupied(HEALTH_PORT)){return;}
+        if(await isPortOccupied(HEALTH_PORT)){
+            // A surviving tunnel may still be owned by an exiting extension
+            // host during reload. Retry safe adoption instead of silently
+            // treating it as permanently external.
+            if(!this.adopted){
+                try{await this.adoptDetached();}catch{
+                    this.notify('Tunnel ownership recovery deferred; no existing process was stopped.');
+                }
+            }
+            return;
+        }
         try{await this.start();}
         catch{
             // Invalid auth/configuration must not generate an endless loop of

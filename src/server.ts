@@ -13,7 +13,7 @@ import {
   authenticated,
   Registration
 } from './multi-window';
-import {listSkillsForShell} from './tools/agent-skills';
+
 import { logger } from './utils/logger';
 import { adaptLegacyToolCall } from './legacy-bridge';
 import {validBearer} from './ai-access';

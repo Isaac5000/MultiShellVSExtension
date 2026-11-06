@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ShellApi } from '../shell-api';
 
 function message(data: unknown, failed = false): CallToolResult {
-    return { isError: failed, content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    return { isError: failed, content: [{ type: 'text', text: JSON.stringify(data) }] };
 }
 function errorOf(e: unknown): CallToolResult {
     return message({ error: e instanceof Error ? e.message : String(e) }, true);
@@ -80,6 +80,46 @@ export function registerShellTools(server: ToolRegistry, shells: ShellApi, reque
             try{
                 if(!shells.executeIsolated){throw new Error('Isolated execution is not available on this connection.');}
                 return message(await shells.executeIsolated(shell_id,command,timeout,requestSignal));
+            }catch(error){return errorOf(error);}
+        });
+
+    server.tool('start_background_command_code',
+        'Start a long-running NON-INTERACTIVE command as a tracked isolated OS process in the owning VS Code window. Returns a job_id immediately. Does NOT occupy or interrupt the integrated terminal; no shell variables or aliases are inherited. Query progress with get_background_command_code. Never automatically repeat a job after a disconnected response.',
+        {shell_id:z.string().describe('Required exact shell ID or alias: chooses owning window and working directory.'),
+         command:z.string().min(1).describe('A non-interactive command; PowerShell on Windows or /bin/sh on Linux/macOS.'),
+         timeout:z.number().int().min(1000).max(3600000).optional().default(120000)},
+        async ({shell_id,command,timeout}):Promise<CallToolResult>=>{
+            try{
+                if(!shells.startBackground){throw new Error('Background commands unavailable in this connection.');}
+                return message(await shells.startBackground(shell_id,command,timeout,requestSignal));
+            }catch(error){return errorOf(error);}
+        });
+    server.tool('get_background_command_code',
+        'Read an isolated job state/progress/output after the original MCP call ended. Requires both the owning shell_id and the random job_id. A missing record after VS Code restart is NOT permission to replay a command.',
+        {shell_id:z.string(),job_id:z.string(),
+         max_chars:z.number().int().min(1).max(16384).optional().default(4096)},
+        async ({shell_id,job_id,max_chars}):Promise<CallToolResult>=>{
+            try{
+                if(!shells.backgroundStatus){throw new Error('Background commands unavailable.');}
+                return message(await shells.backgroundStatus(shell_id,job_id,max_chars));
+            }catch(error){return errorOf(error);}
+        });
+    server.tool('list_background_commands_code',
+        'List recent background jobs for the explicitly selected shell, including running/completed/cancelled status. Jobs survive coordinator HTTP restarts while the owning window remains running.',
+        {shell_id:z.string(),limit:z.number().int().min(1).max(50).optional().default(20)},
+        async ({shell_id,limit}):Promise<CallToolResult>=>{
+            try{
+                if(!shells.listBackgroundJobs){throw new Error('Background commands unavailable.');}
+                return message({jobs:await shells.listBackgroundJobs(shell_id,limit)});
+            }catch(error){return errorOf(error);}
+        });
+    server.tool('cancel_background_command_code',
+        'Explicitly cancel an isolated job created and owned by MultiShell. Only its isolated child process tree is terminated. NEVER sends Ctrl+C or input to a persistent/user terminal. Cancellation is pending until the worker confirms process exit.',
+        {shell_id:z.string(),job_id:z.string()},
+        async ({shell_id,job_id}):Promise<CallToolResult>=>{
+            try{
+                if(!shells.cancelBackground){throw new Error('Background commands unavailable.');}
+                return message(await shells.cancelBackground(shell_id,job_id));
             }catch(error){return errorOf(error);}
         });
 

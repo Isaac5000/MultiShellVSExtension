@@ -25,3 +25,11 @@ scripts/probe-live-*-results.json
 *.multishell-backup-*
 *.multishell-writing-*
 *.multishell.lock/**
+
+# Never commit or bundle persistent agent plaintext SQLite memory.
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.db
+**/*.db-wal
+**/*.db-shm

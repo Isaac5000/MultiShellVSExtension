@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import platform
+import sys
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -32,11 +34,21 @@ def allowed(path: Path) -> bool:
                 or path.is_symlink())
 
 
+def platform_target() -> str:
+    system = {"win32": "win32", "linux": "linux", "darwin": "darwin"}.get(sys.platform)
+    arch = platform.machine().lower()
+    machine = ("arm64" if arch in {"arm64", "aarch64"} else
+               "x64" if arch in {"x64", "amd64", "x86_64"} else None)
+    if system is None or machine is None:
+        raise RuntimeError("Unsupported platform for an integrated VSIX")
+    return f"{system}-{machine}"
+
+
 def build(output: Path) -> tuple[int, str, str]:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     version = package["version"]
     folder = f"MultiShell-MCP-Server-{version}"
-    vsix = ROOT / f"multi-shell-mcp-server-{version}.vsix"
+    vsix = ROOT / f"multi-shell-mcp-server-{version}-{platform_target()}.vsix"
     if not vsix.is_file():
         raise FileNotFoundError(
             f"Build the installer first: {vsix.name} (npm run package)")

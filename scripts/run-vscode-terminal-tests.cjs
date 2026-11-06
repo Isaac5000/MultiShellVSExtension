@@ -1,6 +1,7 @@
 'use strict';
-const fs=require('node:fs'),path=require('node:path'),net=require('node:net');
-const {spawn,spawnSync}=require('node:child_process');
+const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),crypto=require('node:crypto');
+const {spawn}=require('node:child_process');
+const {resolveTestShell}=require('./test-shell-resolver.cjs');
 const root=path.resolve(__dirname,'..');
 const base=path.join(root,'.vscode-test','terminal-integration');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -12,13 +13,16 @@ async function main(){
  const windows=process.platform==='win32';
  const code=process.env.VSCODE_EXECUTABLE||(windows
   ?path.join(process.env.LOCALAPPDATA||'','Programs','Microsoft VS Code','Code.exe'):'code');
- const shell=process.env.MULTISHELL_TEST_SHELL||spawnSync(windows?'where.exe':'which',
-  [windows?'pwsh.exe':'pwsh'],{encoding:'utf8',windowsHide:true,timeout:5000}).stdout?.trim().split(/\r?\n/)[0];
- if(!shell||!fs.existsSync(shell)){throw Error('PowerShell 7 required. Set MULTISHELL_TEST_SHELL to its executable path.');}
+ const shell=resolveTestShell();
  if(windows&&!fs.existsSync(code)){throw Error('Set VSCODE_EXECUTABLE to the VS Code executable.');}
  for(const folder of ['test-workspace/a','test-workspace/b','profile/User','extensions']){
   fs.mkdirSync(path.join(base,folder),{recursive:true});
  }
+ // The isolated VS Code profile must use exactly the credential supplied to
+ // its test RPC client. Never place this token in reports or console output.
+ const tokenFile=path.join(base,'profile','User','globalStorage','local-multishell.multi-shell-mcp-server','multishell-local-token');
+ fs.mkdirSync(path.dirname(tokenFile),{recursive:true});
+ fs.writeFileSync(tokenFile,crypto.randomBytes(32).toString('hex'),{flag:'w',mode:0o600});
  const port=await freePort();
  const platformKey=windows?'windows':process.platform==='darwin'?'osx':'linux';
  const settings={
@@ -39,7 +43,7 @@ async function main(){
   '--disable-extensions','--disable-workspace-trust','--skip-welcome','--skip-release-notes',
   '--new-window',path.join(base,'test-workspace')],{
    windowsHide:true,stdio:['ignore',stdout,stderr],
-   env:{...process.env,MULTISHELL_TEST_ROOT:base,MULTISHELL_TEST_PORT:String(port)}
+   env:{...process.env,MULTISHELL_TEST_ROOT:base,MULTISHELL_TEST_PORT:String(port),MULTISHELL_TEST_TOKEN_FILE:tokenFile}
   });
  let launchError;child.once('error',error=>{launchError=error;});
  fs.closeSync(stdout);fs.closeSync(stderr);

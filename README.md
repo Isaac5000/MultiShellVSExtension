@@ -6,11 +6,32 @@
 
 ## Español
 
-**Código fuente 0.10.52 · VS Code 1.99 o posterior · Licencia MIT**
+**Código fuente 0.10.69 · VS Code 1.99 o posterior · Licencia MIT**
 
 MultiShell MCP Server conecta varias ventanas y terminales de Visual Studio Code a un servidor MCP local. Los comandos siempre seleccionan una terminal por su ID o alias. Las terminales pueden trabajar simultáneamente, con una cola FIFO independiente para cada una.
 
 **Plan multIA en desarrollo:** [arquitectura y fases pendientes](docs/es/plan-conexiones-multia.md). El panel, los perfiles locales y las pasarelas locales con credenciales y permisos independientes ya están implementados; los túneles HTTPS multiIA y la autenticación remota de proveedores no-OpenAI siguen pendientes.
+
+
+
+
+
+
+**Nuevo en 0.10.62:** checkpoints recuperables entre chats reales de ChatGPT mediante herramientas MCP de guardado y lectura, vinculadas a la máquina y al proyecto, con revisiones y espacio limitado. No abre conversaciones automáticamente ni requiere APIs facturables. [Guía de traspaso](docs/es/traspaso-entre-chats.md).
+
+**Nuevo en 0.10.63:** selección segura de tareas guardadas entre chats mediante `chat_handoff_list_code`, rechazo de recuperaciones ambiguas y control de capacidad concurrente. Se retira el borrado remoto sin confirmación humana verificable. No crea chats ni utiliza APIs de pago. [Guía](docs/es/traspaso-entre-chats.md).
+
+**Nuevo en 0.10.64:** retirada del simulador de chats automáticos, de la ejecución independiente por IA/API y de sus componentes no utilizables desde un chat normal de ChatGPT. Se conservan las herramientas MCP, el túnel y los checkpoints recuperables entre chats. La creación del chat siguiente sigue siendo manual. [Viabilidad](docs/es/viabilidad-autocontinuacion-chatgpt.md).
+
+**Nuevo en 0.10.65:** auditoría con skills y correcciones verificadas de lectura segura de checkpoints, límite de memoria para edición por líneas, anotaciones de seguridad MCP y exclusión de metadatos de desarrollo del VSIX. Sin cambios de túnel ni APIs facturables. [Informe](docs/es/auditoria-skills-2026-11-05.md).
+
+**Nuevo en 0.10.69:** un único VSIX con túnel oficial obligatorio por sistema. Se unifican los comandos y las comprobaciones de los instaladores; el plugin opcional sigue siendo un ZIP independiente.
+
+**Nuevo en 0.10.68:** recuperación segura de túneles que continúan activos tras actualizar el VSIX, siempre que la instalación anterior siga verificable y la identidad del proceso coincida. Auditoría y actualización de guías de instalación.
+
+**Corregido en 0.10.67:** los arranques manuales y automáticos priorizan el túnel integrado aunque queden binarios antiguos sin ejecutar. La adopción de procesos legacy activos y verificados conserva su seguridad.
+
+**Nuevo en 0.10.66:** VSIX con túnel oficial verificado incluido para cada arquitectura y código JavaScript minificado. Instalador integrado: npm run package. Ver docs/es/tunel-integrado.md.
 
 ### Terminales y permisos
 
@@ -60,6 +81,14 @@ Consulta la [guía de Agent Skills](docs/es/skills.md).
 
 **Nuevo en 0.10.33:** soporte oficial del protocolo MCP `2026-07-28`, con `server/discover`, `skills/list`, `skills/get` y recursos verificables por SHA-256. Los clientes antiguos siguen funcionando. La distribución también incluye un [plugin portable de ChatGPT y Codex](docs/es/skills.md) con marketplace local; la instalación se autoriza por separado.
 
+
+
+**Nuevo en 0.10.55:** panel más eficiente: perfiles de IA comprobados en paralelo con concurrencia limitada, sin consultas periódicas cuando el panel está oculto y respuestas MCP compactas. [Validación](docs/es/validacion.md).
+
+**Nuevo en 0.10.54:** índice de skills validado por el sistema de archivos, reutilización de metadatos YAML y SHA-256, recursos textuales UTF-8 sin Base64 y respuestas MCP compactas. [Más información](docs/es/skills.md).
+
+**Nuevo en 0.10.53:** trabajos aislados asíncronos con `start_background_command_code`, seguimiento por `job_id`, salida parcial, cancelación del proceso aislado y recuperación sin repetir órdenes después de un cambio de coordinador. El panel muestra procesos activos por terminal; las terminales persistentes no se interrumpen. Ver [guía de uso](docs/es/uso.md).
+
 **Nuevo en 0.10.52:** corrección de la configuración de clientes locales tras asegurar el MCP principal. La antigua opción automática sin autenticación se desactiva; cada cliente puede usar una pasarela autenticada propia y **Copiar configuración** incluye la URL adecuada y un marcador de Bearer, nunca una clave real. Las entradas anteriores se pueden inspeccionar y desvincular sin eliminar el resto. Reproducida y bloqueada una fuga de nombres de archivos por intercambio de directorios durante `list_files_code`.
 
 **Nuevo en 0.10.51:** ayuda simplificada: Gemini CLI y Claude Code ya no solicitan API keys que no necesitan para el inicio de sesión habitual; las claves antiguas se conservan hasta que el usuario decida eliminarlas. **ChatGPT necesita crear un complemento MCP personalizado en Plugins → + → Add custom MCP server**, además de conectar el Secure MCP Tunnel. El panel explica cómo conseguir y utilizar el `tunnel_id`, la clave de ejecución con Tunnels Read + Use, la asociación al espacio de trabajo y los datos de ChatGPT (nombre, descripción opcional, conexión **Tunnel**, mismo `tunnel_id`, autenticación y aceptación del aviso de seguridad). Incluye enlaces oficiales y aclara que la clave de ejecución no se pega en el complemento de ChatGPT.
@@ -104,7 +133,17 @@ npm run package
 npm run package:plugin
 ```
 
-Genera `multi-shell-mcp-server-0.10.52.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
+Para evitar ejecuciones largas, compila una vez y divide las 133 pruebas en cinco tandas (sustituye 1 por 2–5 y cambia el nombre del informe):
+
+```bash
+npm run bundle
+npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json
+node scripts/aggregate-test-reports.cjs .vscode-test/test-results
+```
+
+CI ejecuta todas las tandas en Windows, Linux y macOS. Las pruebas de integración gráfica con VS Code necesitan PowerShell 7 (`pwsh`).
+
+Genera `multi-shell-mcp-server-0.10.69-win32-x64.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
 
 La dirección local predeterminada es `http://127.0.0.1:3000/mcp`.
 
@@ -122,6 +161,10 @@ La versión 0.10.36 limita los archivos al interior de la skill seleccionada, ve
 - [Pruebas y diagnóstico](docs/es/validacion.md)
 - [Uso de Agent Skills](docs/es/skills.md)
 - [Historial de cambios](docs/es/historial.md)
+- [Túnel integrado por plataforma](docs/es/tunel-integrado.md)
+- [Pruebas reales de la instalación con túnel integrado](docs/es/validacion-instalacion-integrada-2026-11-05.md)
+- [Auditoría de seguridad y rendimiento con skills](docs/es/auditoria-skills-2026-11-05.md)
+- [Viabilidad oficial de la continuación automática de chats](docs/es/viabilidad-autocontinuacion-chatgpt.md)
 
 ### Origen y licencia
 
@@ -131,11 +174,32 @@ Adaptación de [juehang/vscode-mcp-server](https://github.com/juehang/vscode-mcp
 
 ## English
 
-**Source code 0.10.52 · VS Code 1.99 or later · MIT license**
+**Source code 0.10.69 · VS Code 1.99 or later · MIT license**
 
 MultiShell MCP Server connects several Visual Studio Code windows and terminals to a local MCP server. Commands always target a terminal by ID or alias. Terminals can run in parallel, with an independent FIFO command queue per terminal.
 
 **Multi-AI roadmap in progress:** [architecture and remaining phases](docs/en/multi-ai-connections-plan.md). Sidebar, local-client profiles and per-AI authenticated local gateways are implemented; non-OpenAI HTTPS transports and remote provider authentication remain pending.
+
+
+
+
+
+
+**New in 0.10.62:** bounded, revision-safe MCP checkpoints for resuming work across actual ChatGPT chats within the same project and machine. It cannot automatically create web conversations and needs no metered API. [Chat handoff guide](docs/en/chat-handoff.md).
+
+**New in 0.10.63:** safe task discovery via `chat_handoff_list_code`, refusal to resume ambiguous or completed-only tasks, and concurrent checkpoint capacity locking. Remote deletion without verifiable local human consent is removed. No chat creation or paid APIs. [Guide](docs/en/chat-handoff.md).
+
+**New in 0.10.64:** removed fake chat-continuation UI and independent model/API agents that cannot advance regular ChatGPT chats. Retained core MCP tools, tunnel and safe cross-chat handoffs. Creating the next ChatGPT chat remains manual. [Feasibility](docs/en/chatgpt-autonomous-continuation-feasibility.md).
+
+**New in 0.10.65:** skills-assisted review with verified fixes for checkpoint read races, bounded whole-file edits, MCP safety annotations and exclusion of development skill metadata from VSIX. No tunnel or paid API changes. [Report](docs/en/skills-security-audit-2026-11-05.md).
+
+**New in 0.10.69:** one native platform VSIX per build, with the official tunnel always bundled. Unified build/validation helpers; the optional MCP plugin remains a separate ZIP.
+
+**New in 0.10.68:** safe adoption of a tunnel still running in the previous installed VSIX, only while the previous binary remains verifiable and the process identity matches. Installation guides were audited and refreshed.
+
+**Fixed in 0.10.67:** both manual and automatic starts prefer the bundled native tunnel even when unused legacy files remain. Verified running legacy processes are still safely adopted.
+
+**New in 0.10.66:** per-platform VSIX bundles verified official tunnel and minified JavaScript core. Integrated installer: npm run package. See docs/en/embedded-tunnel.md.
 
 ### Terminals and permissions
 
@@ -185,6 +249,14 @@ See the [Agent Skills guide](docs/en/skills.md).
 
 **New in 0.10.33:** official MCP `2026-07-28` support with `server/discover`, `skills/list`, `skills/get`, and SHA-256-verifiable skill resources. Older MCP clients remain supported. A [portable ChatGPT/Codex plugin](docs/en/skills.md) with a repo-local marketplace is provided for user-approved installation.
 
+
+
+**New in 0.10.55:** faster panel updates with bounded AI-profile checks, no hidden-view polling and compact MCP responses. [Validation](docs/en/validation.md).
+
+**New in 0.10.54:** filesystem-validated skill indexes and YAML/SHA-256 caches, direct UTF-8 text resources and compact MCP replies. [More information](docs/en/skills.md).
+
+**New in 0.10.53:** tracked asynchronous isolated commands via `start_background_command_code`, `job_id` status polling, partial output, isolated process cancellation and no-replay recovery across coordinator restarts. The panel shows active jobs per terminal without interrupting persistent shells. See the [user guide](docs/en/usage.md).
+
 **New in 0.10.52:** corrected local AI client configuration after securing the main MCP listener. Obsolete URL-only automatic setup is disabled; each local client can use its scoped authenticated gateway and **Copy configuration** produces the correct URL and a Bearer placeholder, never a real secret. Legacy entries remain inspectable/removable. A directory-swap filename disclosure in `list_files_code` was reproduced and blocked.
 
 **New in 0.10.51:** streamlined AI setup: Gemini CLI and Claude Code no longer request API keys unused by their normal account sign-in, while users can explicitly clear previously stored legacy keys. **ChatGPT requires creating a custom MCP plugin under Plugins → + → Add custom MCP server** after connecting Secure MCP Tunnel. The panel explains the `tunnel_id`, restricted Tunnels Read + Use runtime key, workspace association and ChatGPT fields (name, optional description, **Tunnel** connection with the same `tunnel_id`, MCP authentication and risk acknowledgement). Official links clarify that the tunnel runtime key must not be pasted into the ChatGPT plugin.
@@ -229,7 +301,17 @@ npm run package
 npm run package:plugin
 ```
 
-Generate `multi-shell-mcp-server-0.10.52.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
+For shorter runs, compile once and execute the 133-suite regression set in five batches (replace 1 with 2–5 and adjust the report name):
+
+```bash
+npm run bundle
+npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json
+node scripts/aggregate-test-reports.cjs .vscode-test/test-results
+```
+
+CI runs these batches automatically on Windows, Linux and macOS. The real VS Code integration harnesses also require PowerShell 7 (`pwsh`).
+
+Generate `multi-shell-mcp-server-0.10.69-win32-x64.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
 
 The default local endpoint is `http://127.0.0.1:3000/mcp`.
 
@@ -247,6 +329,10 @@ Version 0.10.36 confines files to the selected skill, checks concurrent reads, a
 - [Testing and troubleshooting](docs/en/validation.md)
 - [Using Agent Skills](docs/en/skills.md)
 - [Release history](docs/en/changelog.md)
+- [Bundled official tunnel](docs/en/embedded-tunnel.md)
+- [Live integrated installation validation](docs/en/installed-integrated-validation-2026-11-05.md)
+- [Skills-assisted security and performance audit](docs/en/skills-security-audit-2026-11-05.md)
+- [Official feasibility of autonomous ChatGPT chat continuation](docs/en/chatgpt-autonomous-continuation-feasibility.md)
 
 ### Origin and license
 

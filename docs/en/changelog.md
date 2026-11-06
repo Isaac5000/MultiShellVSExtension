@@ -2,6 +2,147 @@
 
 [Versión en español](../es/historial.md) · [Project index](../../README.md)
 
+## 0.10.69 — One required native VSIX per platform
+
+- Default `npm run package` now produces exactly one VSIX with the verified official Tunnel Client and cloudflared for the target OS and architecture.
+- Removed redundant integrated/platform packaging aliases. `npm run package:all` builds the same single VSIX plus the optional independent MCP plugin ZIP.
+- Updated Windows build/validation scripts, portable-source archive selection, VSIX privacy checks, and bilingual installation instructions to use the native installer.
+- Legacy generic VSIX distribution is discontinued. Platform-native binaries remain necessary; cross-platform packaging targets and safe adoption of previous processes are preserved.
+
+## 0.10.68 — Verify surviving tunnel processes across VSIX upgrades
+
+- Reattach a tunnel launched from a previous installed version when both the old bundled binary and its kernel process identity can be independently verified against the ownership lock.
+- Reject stale PIDs, forged fingerprints, unrelated extension directories, and modified/unverifiable previous binaries. New launches continue using the current bundled executable.
+- Added a failing-before/fixed-after cross-version regression; preserved all existing tests, profiles and credentials.
+- Audited distribution scripts, test caches and documentation; updated installation guidance without deleting reusable integration fixtures.
+
+## 0.10.67 — Prefer bundled tunnel on automatic start
+
+- Manual start and autostart now prefer the SHA-256 verified native executable inside the platform VSIX. An idle globalStorage copy is no longer selected.
+- Safe exception: a running legacy child is retained only when its process identity matches the extension-owned lock. Stale, forged or missing lock state cannot select it.
+- Added a red/green regression for automatic startup, stale PID and generic VSIX fallback. No existing tunnel, credentials or profiles are changed by building this release.
+
+## 0.10.66 — Bundled official tunnel per platform
+
+- Platform-specific VSIX build embeds only the matching official Tunnel Client and cloudflared binaries, SHA-256 checked, with licenses.
+- Shared TypeScript/JavaScript runtime is minified for smaller VSIX and installed footprint.
+- Fresh installs use the verified bundled executable without a separate download or copy in globalStorage.
+- Existing verified globalStorage executable takes precedence to preserve safe adoption of live tunnel processes.
+- Use npm run package:integrated; the generic slim VSIX remains available for compatibility.
+- macOS Gatekeeper/notarization behavior is not verified for directly downloaded upstream ZIP binaries.
+
+## 0.10.65 — Skills-assisted security review
+
+- Added locally versioned MCP, debugging, TDD, differential review, verification, and Node.js skills. No independent AI model is used.
+- Closed a checkpoint read time-of-check/time-of-use race with verified file descriptors and bounded reads.
+- Limited full-file line replacement to 32 MiB to avoid excessive extension-host memory use.
+- Added explicit MCP safety annotations for the reviewed read and write tools.
+- Excluded `skills-lock.json` from VSIX while retaining it in the source repository.
+- Added red/green regression tests for each corrected behavior. See the linked audit report.
+- No extension install, tunnel changes, Git publication, or paid API use.
+
+## 0.10.64 — Remove unsupported continuation prototypes
+
+- Removed fake-chat continuation UI, synthetic rollover engine and their unused runtime code.
+- Removed independent API/local-model agent prototypes: they cannot advance regular ChatGPT web chats and are outside this extension goal.
+- Removed associated demos, tests and obsolete instructions; no standalone MCP SDK client bundle is shipped.
+- Kept actual shell tools, tunnel integration, permissions and bounded cross-chat checkpoints with manual handoff.
+- Existing user checkpoints and tunnel configurations are never removed or modified.
+
+## 0.10.63 — Safer cross-chat handoff selection
+
+- New read-only `chat_handoff_list_code` shows scoped task checkpoints, status and revision.
+- `chat_handoff_load_code` now rejects implicit recovery when multiple unfinished tasks exist or only completed tasks remain.
+- Handoff messages rediscover the current exact shell after VS Code reload rather than embedding a stale shell ID.
+- Cross-process capacity lock prevents simultaneous creations from exceeding 24 handoffs.
+- Removed MCP deletion based on an unverified `human_confirmed=true` model argument. Cleanup requires explicit local maintenance.
+- No tunnel changes, paid inference or automatic ChatGPT chat creation.
+
+## 0.10.62 — MCP checkpoints for ChatGPT chat handoff
+
+- Added `chat_handoff_save_code`, `chat_handoff_load_code` and `chat_handoff_delete_code` for real ChatGPT-chat progress transfer without model inference.
+- Bounded local state: 24 records of at most 16 KiB each; atomic writes and expected-revision checks protect newer progress.
+- Checkpoints are scoped to machine and project directory. Every operation requires an exact live shell; obvious credential strings are rejected.
+- Added bilingual handoff guides and client skill instructions for a new chat in the same ChatGPT Project.
+- Does not automatically create chats or activate metered APIs. The existing tunnel is untouched.
+
+## 0.10.61 — No-extra-billing policy
+
+- Disabled the metered Responses API CLI and excluded its inference adapter from VSIX. Legacy accounting inspection and reconciliation remain available.
+- Added `free-agent-cli.cjs` for deterministic offline simulation or `ollama-local` inference using an already installed local model.
+- Ollama runs as a separately owned child with `OLLAMA_NO_CLOUD=1` and random loopback port, without automatic model downloads or API keys.
+- Model-triggered commands remain disabled; an explicitly selected `git diff --check` verifier is permitted. Existing memory, write, step and deadline quotas remain.
+- Subscription-based providers are not enabled until extra-credit spending can be ruled out. No real Codex execution or paid API usage was performed.
+
+## 0.10.60 — Continuous bounded-batch coordinator
+
+- New `continuous-runner.cjs` repeats normal `batch_limit` pauses without extra confirmations under the same approved goal and cumulative budgets.
+- Durable per-goal coordinator lease, heartbeat, batch count and read-only `continuous-status` inspection.
+- CLI options `--continuous`, `--max-batches` and `--verbose`; real API runs still require `--live --approve`.
+- New mocked end-to-end CLI, rollover, cross-process stop and safe recovery tests. No paid API requests were made.
+- Does not automatically start after reboot or control ChatGPT web conversations.
+
+## 0.10.59 — Isolated MCP client for persistent agents
+
+- Bundles MCP SDK v2 into a standalone client so VSIX installations do not depend on development node_modules.
+- Authenticates using a local token file and requires a 127.0.0.1 endpoint, exact shell_id and validated workspace identity.
+- Exposes only listing/reading, bounded SHA-256 creates/replacements and predefined verification commands with explicit permission.
+- Durable reservations for uncertain writes, per-run and per-goal quotas and rejection of changed machine/workspace identity.
+- Real local MCP read and end-to-end mocked API + actual local MCP CLI validated without charges or workspace edits.
+- Does not install itself, modify the existing tunnel or automate external ChatGPT web conversations.
+
+## 0.10.58 — Optional real API adapter and tunnel recovery hardening
+
+- Integrated an optional OpenAI Responses API adapter with per-run authorization, read-only defaults and a default maximum of 12 steps per invocation.
+- Durable request/write ledgers: 60 writes and 512 KiB per goal; uncertain responses never trigger automatic retries.
+- Added mocked API tests, checkpoint rollover, authorization, goal completion and quota recovery tests; no real API keys were used.
+- Improved safe tunnel ownership recovery after VS Code reload without stopping unrelated or unverified processes.
+- The agent still cannot start ChatGPT web conversations or execute tasks using the MCP tunnel tools.
+
+## 0.10.57 — Standalone persistent agent with SQLite memory
+
+- New `persistent-agent/` subsystem: local SQLite history, FTS5 lexical recall, checkpoints, explicit local-document import and provenance.
+- A standalone supervisor can run simulated agent turns with bounded steps, token counters, deadlines, manual stop, non-progress blocking and context handoff.
+- Context and goals survive process restarts. Single-writer ownership and leases prevent duplicate workers, while stale execution recovery requires an explicit new start.
+- Cross-platform CLI (requires Node.js 24+) supports goal creation, listing, simulation, recall, import, inspection and stop.
+- `FakeWorkProvider` is the only available adapter. **No connection to real models, ChatGPT or paid APIs exists.**
+
+## 0.10.56 — Independent simulated continuation and context recovery
+
+- Codex-independent local fake agent simulates bounded continuation turns, budget checks, no-progress detection and a wall-clock limit.
+- Simulated context exhaustion creates a new fake conversation while retaining the logical goal, a bounded verified checkpoint, remaining stages and all budgets. Old thread identities cannot control the goal.
+- Demo metadata persists in VS Code WorkspaceState and always restores paused. The user must explicitly approve resumption in the panel; writes are serialized against stale overwrites.
+- Corrected fake progress accounting: losing context does not count as completing a work stage.
+- Added persistence, context-hand-off, authorization, invalid-snapshot and restart regression tests.
+- **Ordinary MCP cannot wake real AI chats or create conversations in external services.** Such support still requires a client-owned adapter.
+
+## 0.10.55 — Faster panel refresh and compact MCP replies
+
+- AI profile credential-presence and client-config checks now run in bounded parallelism, up to six profiles, without caching secret values.
+- Hidden panel views skip periodic I/O and refresh immediately when shown again.
+- Shell, file and native VS Code MCP tools emit compact JSON with unchanged data and permission checks.
+- **144/144 automated suites passed**, alongside compilation, bundle, ESLint and strict TypeScript.
+- Real VS Code graphical tests remain pending while the updater holds its instance lock.
+
+## 0.10.54 — Faster Agent Skills discovery and resource transfer
+
+- Stat-validated directory indexes avoid repeated realpath lookups and YAML parsing on later pages.
+- Bounded caches: 4096 directories, 2048 metadata entries/8 MiB and 8192 SHA-256 digests. Each request rechecks file identity and keeps permission, path and symlink validation.
+- Skill tools send compact JSON. MCP `resources/read` transfers text as UTF-8 while preserving Base64 for binary data.
+- Local synthetic benchmark (180 skills, 360 files): nine MCP Skills pages, ~6.99 s before, ~0.87 s warm and ~1.28 s cold.
+- External `ttlMs: 0` remains unchanged to avoid client-side stale metadata.
+## 0.10.53 — Asynchronous isolated commands and safe job recovery
+
+- New MCP tools `start_background_command_code`, `get_background_command_code`, `list_background_commands_code` and `cancel_background_command_code` return job IDs immediately and expose progress without keeping the original MCP request open.
+- Background child processes are owned by the selected VS Code worker; their output and cancellation are tracked independently of the integrated terminal. A regression proves jobs complete while the persistent terminal remains busy and untouched.
+- Coordinator changes do not replay or lose worker-owned jobs while the worker stays alive. Closing a terminal revokes its jobs to prevent disclosure if a shell ID is later reused.
+- Panel indicates active job counts, elapsed time, safe command labels without arguments and possible input hints, with local user confirmation before cancellation. Per-AI gateways enforce exact shell and command-permission scope.
+- Up to 12 concurrent jobs per window, 96 history entries, 16 KiB recent output and 30-minute retention. A full owner-window restart does not preserve job state.
+- Includes earlier unreleased gateway stop hardening, authenticated graphical test harnesses, PowerShell 7 WindowsApps detection, multi-platform CI and structural panel verification.
+- All 133 automated suites passed before packaging. Hands-on VS Code tests remain subject to the updater blockage when active.
+
+
+
 ## 0.10.52 — Authenticated local clients and directory-listing protection
 
 - Fixed a broken post-0.10.51 integration: legacy automatic client setup still wrote an unauthenticated main-port URL. Such setup is now refused; old entries are shown as unverified while managed entries remain removable without deleting unrelated settings.

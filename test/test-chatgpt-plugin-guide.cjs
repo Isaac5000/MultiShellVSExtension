@@ -3,7 +3,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const base=path.resolve(__dirname,'..');
-const markup=fs.readFileSync(path.join(base,'src/panel.ts'),'utf8');
+const markup=fs.readFileSync(path.join(base,'src/panel.ts'),'utf8')+
+  fs.readFileSync(path.join(base,'src/panel-markup.ts'),'utf8');
 const client=fs.readFileSync(path.join(base,'media/panel.js'),'utf8');
 const setup=fs.readFileSync(path.join(base,'plugins/multishell-mcp/skills/setup/SKILL.md'),'utf8');
 const guideCodes=[

@@ -2,7 +2,7 @@
 
 > **Status:** local UI and client setup implemented in 0.10.43–0.10.47; version 0.10.48 adds **per-client authenticated loopback MCP gateways**, individual credentials, shell permissions and revocation. **Still pending:** public HTTPS tunnel, provider-specific login/registration and live acceptance tests. Original proposal November 3; security phase begun at the user's request on November 4.
 > **Prerequisite:** prevent PowerShell's integrated console from taking the foreground at VS Code startup without interrupting the existing MCP tunnel or terminals.
-> **Baseline:** MultiShell MCP Server 0.10.52.
+> **Baseline:** MultiShell MCP Server 0.10.57.
 
 ## Provider-specific client surfaces as of 0.10.46
 
@@ -75,3 +75,17 @@ Pass only when existing ChatGPT/OpenAI setup remains functional, multiple identi
 Not yet decided: HTTPS gateway vendor, quotas/limits, exact plans supported by each provider, OAuth implementation details, or costs.
 
 **Scope boundary:** this document records research and design only. It does not authorize multi-provider implementation or destructive migration.
+
+Documentation compatible with 0.10.69.
+
+Compatible with 0.10.59.
+
+Documentation compatible with 0.10.60.
+
+Compatible with 0.10.61.
+
+Documentation compatible with 0.10.62.
+
+Documentation compatible with 0.10.63.
+
+Compatible with 0.10.64.

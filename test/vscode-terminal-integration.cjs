@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
+const {localMcpHeaders}=require('./support/local-mcp-test-auth.cjs');
 const project=path.resolve(__dirname,'..');
 const base=process.env.MULTISHELL_TEST_ROOT;
 if(!base){throw Error('Launch through npm run test:vscode');}
@@ -17,7 +18,7 @@ async function check(name,fn){report.stage=name;save();const start=Date.now();tr
 let id=0;
 async function rpc(method,params,signal){
  const response=await fetch('http://127.0.0.1:'+testPort+'/mcp',{method:'POST',signal:signal||AbortSignal.timeout(22000),
-  headers:{'content-type':'application/json',accept:'application/json, text/event-stream'},
+  headers:{'content-type':'application/json',accept:'application/json, text/event-stream',...localMcpHeaders()},
   body:JSON.stringify({jsonrpc:'2.0',id:++id,method,params})});
  const body=await response.text();assert.equal(response.status,200,body);
  const row=body.split(/\r?\n/).find(x=>x.startsWith('data:'));
@@ -30,7 +31,7 @@ async function modernRpc(method,params={}){
   'io.modelcontextprotocol/clientCapabilities':{}};
  const response=await fetch('http://127.0.0.1:'+testPort+'/mcp',{method:'POST',signal:AbortSignal.timeout(10000),
   headers:{'content-type':'application/json',accept:'application/json, text/event-stream',
-   'MCP-Protocol-Version':'2026-07-28','Mcp-Method':method,
+   'MCP-Protocol-Version':'2026-07-28','Mcp-Method':method,...localMcpHeaders(),
    ...(method==='resources/read'?{'Mcp-Name':params.uri}:method==='tools/call'?{'Mcp-Name':params.name}:{})},
   body:JSON.stringify({jsonrpc:'2.0',id:++id,method,params:{...params,_meta:metadata}})});
  const body=await response.text();assert.equal(response.status,200,body);

@@ -5,7 +5,7 @@ import { ShellApi } from '../shell-api';
 import { NativeKind, NativeArgs } from './native-window-tools';
 
 function response(value:unknown,isError=false):CallToolResult {
-    return {isError,content:[{type:'text',text:typeof value==='string'?value:JSON.stringify(value,null,2)}]};
+    return {isError,content:[{type:'text',text:typeof value==='string'?value:JSON.stringify(value)}]};
 }
 export function registerNativeTools(server:ToolRegistry,shells:ShellApi):void {
     const selected=z.string().optional().describe(

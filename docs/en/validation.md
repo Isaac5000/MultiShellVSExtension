@@ -1,5 +1,67 @@
 # Testing, validation, and troubleshooting
 
+## Persistent agent and SQLite memory (0.10.57)
+
+- Focused suites cover SQLite persistence, isolated lexical memory retrieval, checkpoint recovery, session ownership and handoffs, cross-process writer locks, local file import and CLI operations.
+- Tests exclusively use a fake adapter, never live models, MCP shell commands or paid APIs.
+- Crash recovery leaves work paused or blocked until locally reauthorized.
+- The standalone simulator requires **external Node.js 24+**; the VS Code extension itself keeps its existing runtime requirements.
+
+## Simulated continuation and persisted recovery (0.10.56)
+
+- Focused coverage includes fake agent stage accounting, context handoffs, explicit consent, budgets, idempotence, thread identity, malformed checkpoints and VS Code persistence.
+- Restored goals are always paused until explicitly reauthorized. Corrupted local snapshots are rejected and storage writes are serialized.
+- New conversations are **fake**, with no calls to Codex or other real AI providers, and no widened MCP permissions.
+Cross-chat persistence is verified by test/test-chat-handoff-http.cjs and test/test-chat-handoff-store.cjs. No automatic-chat simulator exists.
+
+## Panel and MCP protocol optimization (0.10.55)
+
+- Passing tests: `test-bounded-map`, `test-ai-provider-status-parallel`, `test-panel-config-status-parallel`, `test-panel-hidden-refresh`, and `test-mcp-compact-responses`.
+- Independent client profile checks run with up to six profiles concurrently, with ordered results and no secret caching.
+- Hidden views skip periodic window, file and SecretStorage polling and refresh when shown again.
+- Shell, file and native VS Code MCP tools use compact JSON, preserving data and access controls.
+- **144/144 automated suites passed across five batches**, with compilation, bundle, ESLint and strict TypeScript passing.
+- Real graphical VS Code tests remain blocked by the active updater; no installer process was terminated.
+
+## Agent Skills indexing and caching (0.10.54)
+
+- Regression cases cover edit/add/remove invalidation, SHA-256 integrity, path and symlink checks, object isolation, compact JSON and direct UTF-8/binary Base64 resource handling.
+- Synthetic Windows fixture, 180 skills/360 files, nine pages: ~6.99 s originally, ~0.87 s warm and ~1.28 s on the initial scan.
+- Access and containment checks are still required; external MCP Skills responses keep `ttlMs: 0`.
+## Asynchronous isolated jobs (0.10.53)
+
+- New regressions cover background job lifecycle, HTTP MCP tools, full coordinator replacement, processing while the integrated terminal remains busy, scoped AI access, panel feedback and shell-ID revocation.
+- Start returns a `job_id` immediately. Status polling retrieves partial output and completion without replay. Explicit cancellation targets only MultiShell-owned isolated child processes.
+- **133/133 automated suites passed** in five batches. Compilation, strict TypeScript and ESLint have been verified. Real graphical VS Code tests remain pending while its updater blocks launching an isolated extension host.
+- Safety limits: 12 concurrent jobs, 96 history entries, 30-minute retention and the latest 16 KiB of output. Jobs cannot be recovered after the owning VS Code window itself restarts.
+
+
+
+## PowerShell 7 installed and live VS Code integration (2026-11-04)
+
+- **Environment:** PowerShell 7.6.9 runs on Windows. The `pwsh.exe` WindowsApps execution alias is launchable but Node's `fs.existsSync()` returns false. Both `test:vscode` and `test:windows` now validate launchability with `pwsh --version`, covered by `test-test-shell-resolver.cjs`.
+- **Complete suite:** **126/126 automated suites passed** in five batches and were aggregated without duplicates. ESLint, TypeScript compilation, bundling and `git diff --check` passed.
+- **Live integration:** `test:vscode` was started using an isolated profile, but VS Code refused to launch it with `Code is currently being updated`. The active `CodeSetup-stable-...` installer held the update mutex and the harness expired after 180 seconds without starting its extension host. No user or installer process was terminated.
+- **Remaining:** finish the VS Code update, then run `npm run test:vscode` and `npm run test:windows`. Real terminal behavior, the unwanted Windows Terminal window and two-window failover remain unverified.
+
+## Gateway and test hardening (2026-11-04, unreleased)
+
+- **AI gateways:** `stopOne()` keeps a gateway tracked until `stop()` succeeds. A failing shutdown and safe retry are covered; failed shutdown prevents unsafe credential rotation.
+- **Real VS Code harnesses:** `test:vscode` and `test:windows` now send the required per-installation local credential from an isolated profile token file without logging secrets. The 80 command exercise runs in 20-request waves.
+- **CI:** `.github/workflows/ci.yml` configures build, ESLint, five regression batches and packaging on Windows, Ubuntu and macOS, with archived JSON reports. Results on GitHub Actions remain unverified until pushed.
+- **Batched suite:** run `npm run bundle`, then `npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json` (repeat for 2–5). `node scripts/aggregate-test-reports.cjs .vscode-test/test-results` detects failures, duplicates and missing batches.
+- **Webview:** structural checks verify IDs, CSP, nonce and local resources without a fixed SHA-256 that would reject legitimate markup edits.
+- **Local verification:** **125/125 suites passed** in five groups of 25; bundling, compilation, ESLint and strict TypeScript also passed. Reports are in `.vscode-test/test-results`.
+- **Remaining checks:** real graphical tests require PowerShell 7 (`pwsh`), not available in the checked environment. Actual CI runs on Linux/macOS, local client sign-in and Windows Terminal startup behavior remain unverified.
+
+## Unreleased refactor of v0.10.52 code (2026-11-04)
+
+- Extracted static webview markup to `src/panel-markup.ts`, initially verifying byte-for-byte equivalence. The current regression checks identifiers, CSP, nonce and resource paths without permanently pinning a hash.
+- Moved registration of eight tunnel commands out of `activate()` into `registerTunnelCommands`, retaining the original order and command handlers.
+- Removed an unused import and two redundant stored controller properties, preserved compatibility parameters, and simplified remote AI gateway window hiding.
+- **All 119 automated suites passed** in five batches (24 + 24 + 24 + 24 + 23). Compilation, bundling, ESLint and TypeScript `noUnusedLocals`/`noUnusedParameters` checks also passed.
+- No new version number or published VSIX. Real VS Code UI behavior, remote tunnel connectivity and the Windows Terminal startup symptom still need hands-on validation after installation.
+
 **0.10.51 result:** all 116 automated suites passed in five batches (24 + 23 + 23 + 23 + 23); TypeScript compilation, VSIX/plugin packaging, ESLint and `git diff --check` succeeded. Production npm dependency audit reported 0 advisories. Manual post-install checks remain for VS Code startup, the unwanted Windows Terminal window, and ChatGPT connectivity over a real tunnel.
 
 
@@ -396,3 +458,17 @@ Real VS Code checks are distinct from this API test with simulated terminals. Na
 - `test-global-skills-mcp.cjs` covers v2's JSON-RPC errors for unregistered tools while preserving window isolation and local permissions.
 
 **Pending acceptance:** an end-to-end live tunnel test and manual acceptance after installing the VSIX into VS Code. Automated tests alone do not verify those scenarios.
+
+Documentation compatible with 0.10.69.
+
+Compatible with 0.10.59.
+
+Documentation compatible with 0.10.60.
+
+Compatible with 0.10.61.
+
+Documentation compatible with 0.10.62.
+
+Documentation compatible with 0.10.63.
+
+Compatible with 0.10.64.

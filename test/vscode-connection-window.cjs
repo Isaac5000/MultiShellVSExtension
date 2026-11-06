@@ -1,5 +1,6 @@
 'use strict';
 const vscode=require('vscode'),fs=require('node:fs'),path=require('node:path');
+const {localMcpHeaders}=require('./support/local-mcp-test-auth.cjs');
 const base=process.env.MULTISHELL_CONNECTION_ROOT,label=process.env.MULTISHELL_CONNECTION_WINDOW;
 const port=Number(process.env.MULTISHELL_TEST_PORT);
 if(!base||!['A','B'].includes(label)){throw Error('Launch through npm run test:windows');}
@@ -10,7 +11,7 @@ const save=()=>fs.writeFileSync(stateFile,JSON.stringify(state,null,2));
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function discover(){
  const response=await fetch('http://127.0.0.1:'+port+'/mcp',{method:'POST',signal:AbortSignal.timeout(4000),
-  headers:{'content-type':'application/json',accept:'application/json,text/event-stream'},
+  headers:{'content-type':'application/json',accept:'application/json,text/event-stream',...localMcpHeaders()},
   body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'list_windows_code',arguments:{}}})});
  const text=await response.text();const row=text.split(/\r?\n/).find(line=>line.startsWith('data:'));
  const data=JSON.parse(row?row.slice(5):text);const windows=JSON.parse(data.result.content[0].text).windows;

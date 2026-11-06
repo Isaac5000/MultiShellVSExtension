@@ -6,8 +6,8 @@ const path=require('node:path');
 
 const root=path.resolve(__dirname,'..');
 const pkg=require(path.join(root,'package.json'));
-const es=['instalacion.md','uso.md','compatibilidad.md','validacion.md','skills.md','historial.md','plan-conexiones-multia.md'];
-const en=['installation.md','usage.md','compatibility.md','validation.md','skills.md','changelog.md','multi-ai-connections-plan.md'];
+const es=['instalacion.md','uso.md','compatibilidad.md','validacion.md','skills.md','historial.md','plan-conexiones-multia.md','traspaso-entre-chats.md','viabilidad-autocontinuacion-chatgpt.md','auditoria-skills-2026-11-05.md','tunel-integrado.md','validacion-instalacion-integrada-2026-11-05.md'];
+const en=['installation.md','usage.md','compatibility.md','validation.md','skills.md','changelog.md','multi-ai-connections-plan.md','chat-handoff.md','chatgpt-autonomous-continuation-feasibility.md','skills-security-audit-2026-11-05.md','embedded-tunnel.md','installed-integrated-validation-2026-11-05.md'];
 const files=['README.md','CHANGELOG.md',
   ...es.map(file=>'docs/es/'+file),
   ...en.map(file=>'docs/en/'+file)];
@@ -52,7 +52,7 @@ assert.match(read('docs/en/skills.md'),/skill:\/\/index\.json/);
 for(const guide of ['docs/es/skills.md','docs/en/skills.md']){
   const text=read(guide);
   for(const artifact of [
-    'multi-shell-mcp-server-'+pkg.version+'.vsix',
+    'multi-shell-mcp-server-'+pkg.version+'-win32-x64.vsix',
     'multi-shell-mcp-plugin-'+pkg.version+'.zip'
   ]){
     assert.ok(text.includes(artifact),
@@ -108,10 +108,13 @@ const vscodeIgnore=read('.vscodeignore');
 assert.doesNotMatch(vscodeIgnore,/^docs\/(?:\*\*|en|es)/m,
   'Documentation must be packaged into the VSIX');
 const validator=read('scripts/validate-windows.ps1');
+assert.ok(validator.includes('test/test-platform-vsix-tunnel.cjs'),
+  'Windows validation must inspect the verified native VSIX');
+const nativeTest=read('test/test-platform-vsix-tunnel.cjs');
 for(const name of ['extension/docs/es/uso.md','extension/docs/en/usage.md',
   'extension/docs/es/instalacion.md','extension/docs/en/installation.md',
   'extension/docs/es/skills.md','extension/docs/en/skills.md']){
-  assert.ok(validator.includes(name),'VSIX inspection must check '+name);
+  assert.ok(nativeTest.includes(name),'Native VSIX must include '+name);
 }
 assert.match(read('.gitattributes'),/^\* text=auto eol=lf$/m,
   'Text sources must use stable LF endings across Windows and Linux');

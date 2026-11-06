@@ -18,6 +18,7 @@ eslint.config.mjs
 .gitattributes
 AGENTS.md
 .agents/**
+skills-lock.json
 plugins/**
 node_modules/.cache/**
 
@@ -28,7 +29,8 @@ out/**
 
 # Documentation under docs/ is intentionally bundled with the README so its
 # relative links remain valid in both GitHub and the packaged extension.
-# External tunnel distribution is never part of the extension installer.
+# Exclude standalone upstream archives. Integrated platform VSIX builds add
+# only their verified official tunnel executables and companion files.
 tunnel-client-v*/**
 
 # Never distribute project-local AI connector settings or credential-related backups.
@@ -37,3 +39,11 @@ tunnel-client-v*/**
 *.multishell-backup-*
 *.multishell-writing-*
 *.multishell.lock/**
+
+# Never commit or bundle persistent agent plaintext SQLite memory.
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.db
+**/*.db-wal
+**/*.db-shm

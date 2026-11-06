@@ -2,8 +2,15 @@
 
 [English](../en/skills.md) · [Índice](../../README.md)
 
-**MultiShell MCP Server 0.10.52** admite skills de proyecto basadas en la especificación Agent Skills, con `SKILL.md` y metadatos YAML (`name` y `description`).
+**MultiShell MCP Server 0.10.69** admite skills de proyecto basadas en la especificación Agent Skills, con `SKILL.md` y metadatos YAML (`name` y `description`).
 
+## Mejoras de rendimiento de skills (0.10.54)
+
+Los índices reutilizan metadatos y hashes SHA-256 únicamente cuando coinciden identidad y marcas temporales de los archivos. Nuevas skills, cambios y eliminaciones se verifican en cada consulta, sin TTL de caché externa. Los permisos por ventana/IA, la protección frente a rutas externas y enlaces simbólicos, y los límites de lectura permanecen activos.
+
+Las respuestas de las herramientas de skills utilizan JSON compacto. Las referencias de texto usan UTF-8 directo en `resources/read`, evitando Base64 intermedio; los recursos binarios conservan Base64. Los límites de caché son 4096 rutas, 2048 metadatos/8 MiB y 8192 hashes.
+
+En una prueba sintética local de 180 skills y 360 archivos, nueve páginas nativas bajaron de ~6,99 s a ~0,87 s con caché caliente (~1,28 s en la primera pasada). No es una garantía para otros proyectos o equipos.
 ## Dónde guardar las skills
 
 En el panel **MultiShell MCP → Skills** encontrarás un navegador del proyecto de esa ventana. **La ruta se muestra siempre debajo del nombre** (si es larga, se abrevia visualmente y se puede consultar completa al pasar el cursor). El icono de copiar queda a la derecha del nombre. Solo la **descripción** está plegada por defecto: pulsa «Descripción» para expandirla. Los detalles abiertos se conservan al cargar más skills y se restablecen al cambiar de ventana o proyecto. Busca por nombre o descripción, elige proyecto o personales y pulsa **Mostrar más skills** para continuar (40 por página). **Copiar para ChatGPT** copia una instrucción con `load_skill_code`, la ruta exacta y el identificador completo de la terminal principal: pégala en un chat conectado a MultiShell MCP. Los nombres duplicados conservan sus rutas para poder elegirlos sin ambigüedad.
@@ -65,7 +72,7 @@ Los clientes MCP anteriores conservan sus herramientas `list_skills_code`, `read
 
 La distribución portátil está en `plugins/multishell-mcp/`, con `plugin.json`, `mcp.json` y las skills `setup` y `multishell-mcp`. El marketplace de desarrollo es `.agents/plugins/marketplace.json` (`multishell-local`).
 
-Genera ambos instaladores con `npm run package:all`. Se crean `multi-shell-mcp-server-0.10.52.vsix` y `multi-shell-mcp-plugin-0.10.52.zip`. Para instalar el plugin de forma local en un cliente compatible, selecciona el marketplace del repositorio y autoriza la instalación; la compilación no instala nada automáticamente.
+Genera **un único VSIX con túnel integrado** mediante `npm run package`; si necesitas también el plugin opcional, usa `npm run package:all`. En Windows x64 son `multi-shell-mcp-server-0.10.69-win32-x64.vsix` y, cuando se solicita, `multi-shell-mcp-plugin-0.10.69.zip`. Para instalar el plugin de forma local en un cliente compatible, selecciona el marketplace del repositorio y autoriza la instalación; la compilación no instala nada automáticamente.
 
 **Importante:** el `mcp.json` incluido apunta a `http://127.0.0.1:3000/mcp`, accesible solo desde la misma máquina y con el puerto predeterminado. ChatGPT Work en la nube debe utilizar un conector MCP registrado con túnel seguro y configuración propia. No publiques el servidor local sin autenticación directamente en Internet. El plugin aporta las skills; no concede permisos nuevos.
 
@@ -131,3 +138,8 @@ Los mensajes dentro de una skill son contenido del proyecto y deben tratarse com
 La búsqueda se aplica antes del límite de respuesta. `cursor` y `limit` permiten recorrer catálogos grandes; continúa con `next_cursor` y la misma consulta y alcance. Las herramientas anteriores se mantienen. Se exploran como máximo 4096 entradas por consulta y se avisa si se alcanza ese límite. El catálogo puede cambiar entre páginas; para un recorrido coherente, evita modificarlo mientras lo recorres.
 
 El alcance predeterminado de las herramientas nuevas es `project`. Para skills personales, indica `scope="global"` o `all` y habilita el permiso local correspondiente. No se habilita automáticamente. Cargar instrucciones no las ejecuta ni instala una skill nativa en el cliente. La fuente de plugins ECC sigue necesitando integración explícita; no se amplían sus permisos en esta versión.
+
+Edición compatible con 0.10.58.
+
+
+Instaladores actuales: multi-shell-mcp-server-0.10.67.vsix y multi-shell-mcp-plugin-0.10.67.zip
