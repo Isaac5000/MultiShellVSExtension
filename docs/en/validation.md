@@ -48,11 +48,11 @@ Cross-chat persistence is verified by test/test-chat-handoff-http.cjs and test/t
 
 - **AI gateways:** `stopOne()` keeps a gateway tracked until `stop()` succeeds. A failing shutdown and safe retry are covered; failed shutdown prevents unsafe credential rotation.
 - **Real VS Code harnesses:** `test:vscode` and `test:windows` now send the required per-installation local credential from an isolated profile token file without logging secrets. The 80 command exercise runs in 20-request waves.
-- **CI:** `.github/workflows/ci.yml` configures build, ESLint, five regression batches and packaging on Windows, Ubuntu and macOS, with archived JSON reports. Results on GitHub Actions remain unverified until pushed.
+- **GitHub Actions disabled (2026-11-06):** removed `.github/workflows/ci.yml` because of a billing-related account lock. Building, linting, regression testing and native packaging remain available through local `npm` commands; pushes and pull requests no longer launch jobs.
 - **Batched suite:** run `npm run bundle`, then `npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json` (repeat for 2–5). `node scripts/aggregate-test-reports.cjs .vscode-test/test-results` detects failures, duplicates and missing batches.
 - **Webview:** structural checks verify IDs, CSP, nonce and local resources without a fixed SHA-256 that would reject legitimate markup edits.
 - **Local verification:** **125/125 suites passed** in five groups of 25; bundling, compilation, ESLint and strict TypeScript also passed. Reports are in `.vscode-test/test-results`.
-- **Remaining checks:** real graphical tests require PowerShell 7 (`pwsh`), not available in the checked environment. Actual CI runs on Linux/macOS, local client sign-in and Windows Terminal startup behavior remain unverified.
+- **Remaining checks:** real graphical tests require PowerShell 7 (`pwsh`), not available in the checked environment. Local Linux/macOS testing, client sign-in and Windows Terminal startup behavior remain unverified; no GitHub Actions jobs are configured.
 
 ## Unreleased refactor of v0.10.52 code (2026-11-04)
 

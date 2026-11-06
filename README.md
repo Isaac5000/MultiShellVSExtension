@@ -141,7 +141,7 @@ npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/b
 node scripts/aggregate-test-reports.cjs .vscode-test/test-results
 ```
 
-CI ejecuta todas las tandas en Windows, Linux y macOS. Las pruebas de integración gráfica con VS Code necesitan PowerShell 7 (`pwsh`).
+Las pruebas se ejecutan **localmente** con `npm run test:multishell`. Se ha retirado el workflow de GitHub Actions para evitar trabajos sujetos a facturación. Las pruebas gráficas de VS Code necesitan PowerShell 7 (`pwsh`).
 
 Genera `multi-shell-mcp-server-0.10.69-win32-x64.vsix` con `npm run package`. Se instala mediante **Extensions: Install from VSIX...**. Compilar o empaquetar no actualiza la extensión ya instalada.
 
@@ -309,7 +309,7 @@ npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/b
 node scripts/aggregate-test-reports.cjs .vscode-test/test-results
 ```
 
-CI runs these batches automatically on Windows, Linux and macOS. The real VS Code integration harnesses also require PowerShell 7 (`pwsh`).
+Run the tests **locally** using `npm run test:multishell`. The GitHub Actions workflow has been removed to avoid billed jobs. Real VS Code integration tests also require PowerShell 7 (`pwsh`).
 
 Generate `multi-shell-mcp-server-0.10.69-win32-x64.vsix` with `npm run package`. Install it using **Extensions: Install from VSIX...**. Building or packaging does not update the installed extension.
 

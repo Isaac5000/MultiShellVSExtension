@@ -33,9 +33,8 @@ assert.doesNotMatch(portable,/f"multi-shell-mcp-server-\{version\}\.vsix"/,
 const privacy=source('test/test-package-privacy.cjs');
 assert.match(privacy,/process\.platform.*process\.arch|platformTag/,
  'Privacy test should inspect the native VSIX, not a missing generic VSIX');
-const ci=source('.github/workflows/ci.yml');
-assert.match(ci,/npm run package:all/,
- 'CI must build the integrated VSIX and the separate plugin ZIP');
+assert.match(scripts['package:all'],/npm run package\b.*npm run package:plugin\b/,
+ 'Local packaging must build the integrated VSIX and the optional plugin ZIP');
 const guide=source('docs/es/instalacion.md');
 assert.match(guide,/win32-x64\.vsix/,
  'Current Windows instructions must describe the one native VSIX');

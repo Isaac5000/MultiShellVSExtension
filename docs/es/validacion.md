@@ -48,11 +48,11 @@ La persistencia entre chats se comprueba con test/test-chat-handoff-http.cjs y t
 
 - **Pasarelas IA:** `stopOne()` conserva el servidor registrado hasta que `stop()` termina correctamente. Se ha probado el error de cierre y el reintento; un cierre fallido impide continuar con la rotación de credenciales.
 - **VS Code real:** los bancos `test:vscode` y `test:windows` se han adaptado a la autenticación local obligatoria desde 0.10.51. Usan un archivo de token en un perfil aislado y no incorporan claves a registros. Las 80 operaciones de conexión se ejecutan por oleadas de 20.
-- **CI:** `.github/workflows/ci.yml` prepara compilación, ESLint, cinco tandas de regresión y empaquetado en Windows, Ubuntu y macOS con informes JSON. El resultado real en GitHub Actions se conocerá cuando se publique el código.
+- **GitHub Actions desactivado (06/11/2026):** eliminado `.github/workflows/ci.yml` por bloqueo de facturación. Las compilaciones, ESLint, regresiones y paquetes siguen disponibles mediante comandos `npm` locales; no se lanzan trabajos al hacer `push` o abrir una PR.
 - **Ejecución por tandas:** `npm run bundle` seguido de `npm run test:batch -- --batch=1 --batches=5 --report=.vscode-test/test-results/batch-1.json` (repetir con 2–5). `node scripts/aggregate-test-reports.cjs .vscode-test/test-results` detecta fallos, pruebas duplicadas y tandas incompletas.
 - **Panel:** el test comprueba identificadores, CSP, nonce y recursos locales sin exigir un SHA-256 fijo que bloquearía cambios legítimos.
 - **Verificación actual:** **125/125 suites correctas** en cinco tandas de 25; compilación, bundling, ESLint y TypeScript estricto correctos. Los informes locales están en `.vscode-test/test-results`.
-- **Pendiente:** las pruebas gráficas requieren PowerShell 7 (`pwsh`), no disponible en el entorno observado. También queda por comprobar el resultado de CI en Linux/macOS, la conexión real de los clientes IA y el arranque sin ventana de Windows Terminal.
+- **Pendiente:** las pruebas gráficas requieren PowerShell 7 (`pwsh`), no disponible en el entorno observado. Las pruebas locales reales en Linux/macOS, la conexión de clientes IA y el arranque sin ventana de Windows Terminal siguen pendientes; no se usan trabajos de GitHub Actions.
 
 ## Refactorización no publicada sobre el código 0.10.52 (04/11/2026)
 
